@@ -1,5 +1,6 @@
 import argparse
 import glob
+import logging
 import os
 import shutil
 from typing import List
@@ -9,6 +10,9 @@ from PIL import Image
 from inference import load_model, predict
 from preprocessing import preprocess
 from qt_interface import run_interface
+
+
+logging.basicConfig(level=logging.INFO)
 
 
 def load_labels(label_file: str) -> List[str]:
@@ -21,9 +25,14 @@ def load_labels(label_file: str) -> List[str]:
         List[str]: List of label lines.
     """
     if not os.path.exists(label_file):
+        logging.warning("Label file missing: %s", label_file)
         return []
-    with open(label_file) as f:
-        return [line.strip() for line in f if line.strip()]
+    try:
+        with open(label_file) as f:
+            return [line.strip() for line in f if line.strip()]
+    except (OSError, UnicodeDecodeError) as e:
+        logging.error("Failed to read label file %s: %s", label_file, e)
+        return []
 
 
 def main():
@@ -43,7 +52,10 @@ def main():
     for src in glob.glob(os.path.join(args.labels, '*.txt')):
         dst = os.path.join(args.corrected, os.path.basename(src))
         if not os.path.exists(dst):
-            shutil.copy(src, dst)
+            try:
+                shutil.copy(src, dst)
+            except OSError as e:
+                logging.error("Failed to copy %s to %s: %s", src, dst, e)
 
     pred_dir = os.path.join(args.corrected, "predicted_labels")
     os.makedirs(pred_dir, exist_ok=True)
@@ -61,7 +73,11 @@ def main():
     label_files = []
 
     for img_path in image_paths:
-        image = Image.open(img_path).convert('RGB')
+        try:
+            image = Image.open(img_path).convert('RGB')
+        except (OSError, ValueError) as e:
+            logging.error("Failed to open image %s: %s", img_path, e)
+            continue
         processed = preprocess(image)
         base = os.path.splitext(os.path.basename(img_path))[0]
         label_file = os.path.join(args.corrected, base + '.txt')
