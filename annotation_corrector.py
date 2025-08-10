@@ -38,7 +38,11 @@ def load_labels(label_file: str) -> List[str]:
         List[str]: List of label lines.
     """
     if not os.path.exists(label_file):
-        logging.warning("Label file missing: %s", label_file)
+        # Simply return an empty list when the label file is missing.
+        # Previously a warning was logged here which interfered with the
+        # tqdm progress bar output.  Suppressing the warning keeps the
+        # progress bar intact while still handling the missing file
+        # gracefully.
         return []
     try:
         with open(label_file) as f:
