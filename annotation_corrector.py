@@ -41,6 +41,7 @@ def main():
             shutil.copy(src, dst)
 
     model = load_model(args.model)
+    class_names = getattr(getattr(model, "model", None), "names", [])
     image_paths = sorted(glob.glob(os.path.join(args.images, '*')))
 
     for img_path in image_paths:
@@ -54,7 +55,7 @@ def main():
         if set(line for line, _ in pred_lines) == set(label_lines):
             continue
 
-        run_interface(processed, pred_lines, label_lines, label_file)
+        run_interface(processed, pred_lines, label_lines, label_file, class_names)
 
 
 if __name__ == "__main__":

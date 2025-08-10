@@ -22,6 +22,19 @@ from PyQt6.QtWidgets import (
 )
 
 
+class ZoomableGraphicsView(QGraphicsView):
+    """Graphics view supporting zooming and panning."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+    def wheelEvent(self, event):
+        factor = 1.25 if event.angleDelta().y() > 0 else 0.8
+        self.scale(factor, factor)
+
+
 def yolo_line_to_rect(line: str, img_w: int, img_h: int) -> QRectF:
     """Convert a YOLO label line to a QRectF."""
     parts = line.split()
@@ -37,47 +50,66 @@ def yolo_line_to_rect(line: str, img_w: int, img_h: int) -> QRectF:
 class PredBox(QGraphicsRectItem):
     """Graphics item for a predicted box."""
 
-    def __init__(self, rect: QRectF, line: str, conf: float):
+    def __init__(self, rect: QRectF, line: str, conf: float, class_names: List[str], window: "AnnotationWindow"):
         super().__init__(rect)
+        self.window = window
         self.line = line
         self.conf = conf
         self.accepted = False
         self.setPen(QPen(QColor("red"), 2))
 
-        cls = line.split()[0]
-        self.label = QGraphicsTextItem(f"{cls}:{conf:.2f}", self)
-        self.label.setDefaultTextColor(QColor("red"))
-        self.label.setPos(rect.left(), rect.top() - 15)
+        cls_id = int(line.split()[0])
+        cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
+        self.label = QGraphicsTextItem(self)
+        self.label.setHtml(f"<div style='background-color:white;'>{cls_name}:{conf:.2f}</div>")
+        self.label.setPos(rect.left(), rect.top() - 20)
 
-        self.tick = QGraphicsTextItem("✓", self)
-        self.tick.setDefaultTextColor(QColor("gray"))
-        self.tick.setPos(rect.left(), rect.top())
+        self.tick = QGraphicsTextItem(self)
+        self._update_tick()
+        self.tick.setPos(rect.right() + 2, rect.top() - 20)
+
+    def _update_tick(self):
+        color = "green" if self.accepted else "gray"
+        self.tick.setHtml(f"<div style='color:{color};background-color:white;'>✓</div>")
 
     def mousePressEvent(self, event):
         self.accepted = not self.accepted
-        color = QColor("green") if self.accepted else QColor("gray")
-        self.tick.setDefaultTextColor(color)
+        self._update_tick()
         super().mousePressEvent(event)
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
 
 
 class GTBox(QGraphicsRectItem):
     """Graphics item for an existing ground truth box."""
 
-    def __init__(self, rect: QRectF, line: str):
+    def __init__(self, rect: QRectF, line: str, class_names: List[str], window: "AnnotationWindow"):
         super().__init__(rect)
+        self.window = window
         self.line = line
         self.kept = True
         self.setPen(QPen(QColor("green"), 2))
 
-        self.cross = QGraphicsTextItem("✗", self)
-        self.cross.setDefaultTextColor(QColor("red"))
-        self.cross.setPos(rect.left(), rect.top())
+        cls_id = int(line.split()[0])
+        cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
+        self.label = QGraphicsTextItem(self)
+        self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
+        self.label.setPos(rect.left(), rect.top() - 20)
+
+        self.cross = QGraphicsTextItem(self)
+        self._update_cross()
+        self.cross.setPos(rect.right() + 2, rect.top() - 20)
+
+    def _update_cross(self):
+        color = "red" if self.kept else "gray"
+        self.cross.setHtml(f"<div style='color:{color};background-color:white;'>✗</div>")
 
     def mousePressEvent(self, event):
         self.kept = not self.kept
-        color = QColor("red") if self.kept else QColor("gray")
-        self.cross.setDefaultTextColor(color)
+        self._update_cross()
         super().mousePressEvent(event)
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
 
 
 class AnnotationWindow(QMainWindow):
@@ -89,13 +121,15 @@ class AnnotationWindow(QMainWindow):
         predictions: List[Tuple[str, float]],
         labels: List[str],
         label_file: str,
+        class_names: List[str],
     ):
         super().__init__()
         self.setWindowTitle("YOLO Annotation Corrector")
         self.label_file = label_file
+        self.class_names = class_names
 
         self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
+        self.view = ZoomableGraphicsView(self.scene)
         self.scene.addItem(QGraphicsPixmapItem(pixmap))
 
         img_w = pixmap.width()
@@ -104,20 +138,30 @@ class AnnotationWindow(QMainWindow):
         self.pred_items: List[PredBox] = []
         for line, conf in predictions:
             rect = yolo_line_to_rect(line, img_w, img_h)
-            item = PredBox(rect, line, conf)
+            item = PredBox(rect, line, conf, class_names, self)
             self.scene.addItem(item)
             self.pred_items.append(item)
 
         self.gt_items: List[GTBox] = []
         for line in labels:
             rect = yolo_line_to_rect(line, img_w, img_h)
-            item = GTBox(rect, line)
+            item = GTBox(rect, line, class_names, self)
             self.scene.addItem(item)
             self.gt_items.append(item)
+
+        self.final_items: List[QGraphicsRectItem] = []
 
         self.pred_checkbox = QCheckBox("Show predictions")
         self.pred_checkbox.setChecked(True)
         self.pred_checkbox.toggled.connect(self.toggle_predictions)
+
+        self.gt_checkbox = QCheckBox("Show ground truth")
+        self.gt_checkbox.setChecked(True)
+        self.gt_checkbox.toggled.connect(self.toggle_gt)
+
+        self.final_checkbox = QCheckBox("Show final labels")
+        self.final_checkbox.setChecked(False)
+        self.final_checkbox.toggled.connect(self.toggle_final)
 
         self.preview_btn = QPushButton("Preview")
         self.preview_btn.clicked.connect(self.preview)
@@ -127,6 +171,8 @@ class AnnotationWindow(QMainWindow):
 
         control_layout = QHBoxLayout()
         control_layout.addWidget(self.pred_checkbox)
+        control_layout.addWidget(self.gt_checkbox)
+        control_layout.addWidget(self.final_checkbox)
         control_layout.addWidget(self.preview_btn)
         control_layout.addWidget(self.save_btn)
         controls = QWidget()
@@ -144,6 +190,32 @@ class AnnotationWindow(QMainWindow):
         for item in self.pred_items:
             item.setVisible(state)
 
+    def toggle_gt(self, state: bool):
+        for item in self.gt_items:
+            item.setVisible(state)
+
+    def toggle_final(self, state: bool):
+        self.update_final_items()
+
+    def update_final_items(self):
+        for item in self.final_items:
+            self.scene.removeItem(item)
+        self.final_items = []
+        if not self.final_checkbox.isChecked():
+            return
+        for item in self.gt_items:
+            if item.kept:
+                rect = QGraphicsRectItem(item.rect())
+                rect.setPen(QPen(QColor("blue"), 2))
+                self.scene.addItem(rect)
+                self.final_items.append(rect)
+        for item in self.pred_items:
+            if item.accepted:
+                rect = QGraphicsRectItem(item.rect())
+                rect.setPen(QPen(QColor("blue"), 2))
+                self.scene.addItem(rect)
+                self.final_items.append(rect)
+
     def preview(self):
         lines = [i.line for i in self.gt_items if i.kept]
         lines += [i.line for i in self.pred_items if i.accepted]
@@ -160,7 +232,13 @@ class AnnotationWindow(QMainWindow):
         self.close()
 
 
-def run_interface(image, predictions: List[Tuple[str, float]], label_lines: List[str], label_file: str):
+def run_interface(
+    image,
+    predictions: List[Tuple[str, float]],
+    label_lines: List[str],
+    label_file: str,
+    class_names: List[str],
+):
     """Launch the PyQt6 interface for a single image."""
     app = QApplication.instance() or QApplication([])
 
@@ -169,6 +247,6 @@ def run_interface(image, predictions: List[Tuple[str, float]], label_lines: List
     qimg = QImage(data, img.width, img.height, QImage.Format.Format_RGB888)
     pixmap = QPixmap.fromImage(qimg)
 
-    window = AnnotationWindow(pixmap, predictions, label_lines, label_file)
+    window = AnnotationWindow(pixmap, predictions, label_lines, label_file, class_names)
     window.show()
     app.exec()
