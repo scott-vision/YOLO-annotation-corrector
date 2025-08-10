@@ -162,12 +162,13 @@ class AnnotationWindow(QMainWindow):
 
 def run_interface(image, predictions: List[Tuple[str, float]], label_lines: List[str], label_file: str):
     """Launch the PyQt6 interface for a single image."""
+    app = QApplication.instance() or QApplication([])
+
     img = image.convert("RGB")
     data = img.tobytes("raw", "RGB")
     qimg = QImage(data, img.width, img.height, QImage.Format.Format_RGB888)
     pixmap = QPixmap.fromImage(qimg)
 
-    app = QApplication.instance() or QApplication([])
     window = AnnotationWindow(pixmap, predictions, label_lines, label_file)
     window.show()
     app.exec()
