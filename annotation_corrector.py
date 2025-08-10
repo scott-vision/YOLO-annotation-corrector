@@ -77,11 +77,12 @@ def main():
     pred_dir = os.path.join(args.corrected, "predicted_labels")
     os.makedirs(pred_dir, exist_ok=True)
 
-    model = None
-    class_names: List[str] = []
-    if not args.predictions:
-        model = load_model(args.model)
-        class_names = getattr(getattr(model, "model", None), "names", [])
+    model = load_model(args.model)
+    class_names: List[str] = getattr(getattr(model, "model", None), "names", [])
+    if args.predictions:
+        # When using cached predictions we still need the class names but can
+        # discard the model to avoid unnecessary memory usage.
+        model = None
     image_paths = sorted(
         p
         for p in glob.glob(os.path.join(args.images, '*'))
