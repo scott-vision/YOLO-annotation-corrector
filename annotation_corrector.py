@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from inference import load_model, predict
 from preprocessing import preprocess
-from qt_interface import run_interface
+from window import run_interface
 
 
 
