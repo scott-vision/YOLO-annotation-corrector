@@ -8,7 +8,7 @@ from PIL import Image
 
 from inference import load_model, predict
 from preprocessing import preprocess
-from qt_interface import run_interface
+from window import run_interface
 
 
 def load_labels(label_file: str) -> List[str]:
