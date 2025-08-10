@@ -2,7 +2,7 @@
 
 Interactive tool for reviewing YOLO annotations. It runs an Ultralytics YOLO model on a set of images and compares the predictions with existing label files. Only images where the predictions and labels differ are presented to the user for review.
 
-The application now provides a PyQt6 interface. Model predictions (in red) can be toggled on and off, each showing its confidence and a check mark for accepting the prediction. Existing labels (in green) display a cross that can be clicked to remove them. A preview window shows the final label lines before saving.
+The application provides a single PyQt6 interface that lets you work through all images without reopening the window. Model predictions (in red) can be toggled on and off, each showing its confidence and a check mark for accepting the prediction. Existing labels (in green) display a cross that can be clicked to remove them. A preview window shows the final label lines before saving.
 
 ## Usage
 
@@ -15,6 +15,9 @@ The script copies all label files from the `--labels` directory into the `--corr
 * Toggle prediction boxes on or off.
 * Click the **✓** on a prediction to include it.
 * Click the **✗** on a ground-truth box to remove it.
-* Use **Preview** to view the final labels before saving.
+* Adjust image display using brightness and contrast sliders.
+* Move between images with **Previous** and **Next**.
+* Press **Save** to write labels for all images and **Exit** to close the tool.
+* Use **Preview** to view the final labels for the current image.
 
 Image preprocessing is defined in `preprocessing.py` and currently returns images unchanged.
