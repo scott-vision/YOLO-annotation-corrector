@@ -5,10 +5,22 @@ import shutil
 from typing import List
 
 from PIL import Image
+from tqdm import tqdm
 
 from inference import load_model, predict
 from preprocessing import preprocess
 from qt_interface import run_interface
+
+
+IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".webp",
+}
 
 
 def load_labels(label_file: str) -> List[str]:
@@ -53,14 +65,18 @@ def main():
     if not args.predictions:
         model = load_model(args.model)
         class_names = getattr(getattr(model, "model", None), "names", [])
-    image_paths = sorted(glob.glob(os.path.join(args.images, '*')))
+    image_paths = sorted(
+        p
+        for p in glob.glob(os.path.join(args.images, '*'))
+        if os.path.splitext(p)[1].lower() in IMAGE_EXTENSIONS
+    )
 
     images = []
     predictions = []
     labels = []
     label_files = []
 
-    for img_path in image_paths:
+    for img_path in tqdm(image_paths, desc="Processing images"):
         image = Image.open(img_path).convert('RGB')
         processed = preprocess(image)
         base = os.path.splitext(os.path.basename(img_path))[0]
