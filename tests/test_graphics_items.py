@@ -37,8 +37,9 @@ def test_predbox_state_update():
     view.show()
     QTest.qWait(10)  # exercise event loop
     box.accepted = True
-    box._update_tick()
+    box._update_icon()
     assert box.accepted is True
+    assert "✗" in box.icon.toHtml()
 
 
 def test_gtbox_state_update():
@@ -53,6 +54,7 @@ def test_gtbox_state_update():
     view.show()
     QTest.qWait(10)
     box.kept = False
-    box._update_cross()
+    box._update_icon()
     assert box.kept is False
+    assert "✓" in box.icon.toHtml()
 

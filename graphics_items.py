@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import List, Optional, TYPE_CHECKING
 
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import Qt, QRectF
 from PyQt6.QtGui import QColor, QPen
 from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsTextItem
 
@@ -68,17 +68,25 @@ class PredBox(QGraphicsRectItem):
         )
         self.label.setPos(rect.left(), rect.top() - 20)
 
-        self.tick = QGraphicsTextItem(self)
-        self._update_tick()
-        # Place the tick at the bottom-left of the rectangle so it does not
+        self.icon = QGraphicsTextItem(self)
+        self.icon.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._update_icon()
+        # Place the indicator at the bottom-left of the rectangle so it does not
         # interfere with the resize handles located at the corners.
-        self.tick.setPos(rect.left(), rect.bottom() + 2)
+        self.icon.setPos(rect.left(), rect.bottom() + 2)
 
-    def _update_tick(self) -> None:
-        """Display a checkmark indicating whether the prediction is accepted."""
+    def _update_icon(self) -> None:
+        """Display a tick to add or a cross to remove a prediction."""
 
-        color = "green" if self.accepted else "gray"
-        self.tick.setHtml(f"<div style='color:{color};background-color:white;'>✓</div>")
+        if self.accepted:
+            symbol = "✗"
+            color = "red"
+        else:
+            symbol = "✓"
+            color = "green"
+        self.icon.setHtml(
+            f"<div style='color:{color};background-color:white;'>{symbol}</div>"
+        )
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -111,7 +119,7 @@ class PredBox(QGraphicsRectItem):
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
         self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.tick.setPos(self.rect().left(), self.rect().bottom() + 2)
+        self.icon.setPos(self.rect().left(), self.rect().bottom() + 2)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()
@@ -120,18 +128,22 @@ class PredBox(QGraphicsRectItem):
     # Mouse events
     # ------------------------------------------------------------------
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        """Toggle acceptance or start resizing on mouse press."""
+        """Toggle acceptance or start resizing on left click."""
 
+        if event.button() != Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
         if self._start_resize(event):
             QGraphicsRectItem.mousePressEvent(self, event)
             return
         # Toggle accepted state when clicked.
         self.accepted = not self.accepted
         self.state["accepted"] = self.accepted
-        self._update_tick()
+        self._update_icon()
         super().mousePressEvent(event)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
+        self.window.flag_predictions()
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self._resizing:
@@ -176,17 +188,24 @@ class GTBox(QGraphicsRectItem):
         self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
         self.label.setPos(rect.left(), rect.top() - 20)
 
-        self.cross = QGraphicsTextItem(self)
-        self._update_cross()
-        # Position the cross at the bottom-left to mirror the tick placement
-        # for predicted boxes and free up space near the top-right corner.
-        self.cross.setPos(rect.left(), rect.bottom() + 2)
+        self.icon = QGraphicsTextItem(self)
+        self.icon.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._update_icon()
+        # Position the indicator at the bottom-left to mirror the predicted boxes.
+        self.icon.setPos(rect.left(), rect.bottom() + 2)
 
-    def _update_cross(self) -> None:
-        """Display a cross indicating whether the annotation is kept."""
+    def _update_icon(self) -> None:
+        """Display a cross to remove or a tick to add the annotation."""
 
-        color = "red" if self.kept else "gray"
-        self.cross.setHtml(f"<div style='color:{color};background-color:white;'>✗</div>")
+        if self.kept:
+            symbol = "✗"
+            color = "red"
+        else:
+            symbol = "✓"
+            color = "green"
+        self.icon.setHtml(
+            f"<div style='color:{color};background-color:white;'>{symbol}</div>"
+        )
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -219,7 +238,7 @@ class GTBox(QGraphicsRectItem):
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
         self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.cross.setPos(self.rect().left(), self.rect().bottom() + 2)
+        self.icon.setPos(self.rect().left(), self.rect().bottom() + 2)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()
@@ -228,14 +247,17 @@ class GTBox(QGraphicsRectItem):
     # Mouse events
     # ------------------------------------------------------------------
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        """Toggle whether the ground truth annotation is kept."""
+        """Toggle whether the ground truth annotation is kept on left click."""
 
+        if event.button() != Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
         if self._start_resize(event):
             QGraphicsRectItem.mousePressEvent(self, event)
             return
         self.kept = not self.kept
         self.state["kept"] = self.kept
-        self._update_cross()
+        self._update_icon()
         super().mousePressEvent(event)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
