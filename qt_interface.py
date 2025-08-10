@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Optional
 
 from PIL import ImageEnhance
 from PyQt6.QtCore import Qt, QRectF
@@ -50,10 +50,41 @@ def yolo_line_to_rect(line: str, img_w: int, img_h: int) -> QRectF:
     return QRectF(x1, y1, w * img_w, h * img_h)
 
 
+def rect_to_yolo_line(rect: QRectF, cls_id: int, img_w: int, img_h: int) -> str:
+    """Convert a QRectF back to a YOLO label line."""
+    xc = (rect.left() + rect.width() / 2) / img_w
+    yc = (rect.top() + rect.height() / 2) / img_h
+    w = rect.width() / img_w
+    h = rect.height() / img_h
+    return f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}"
+
+
+def iou(rect1: QRectF, rect2: QRectF) -> float:
+    """Compute intersection-over-union of two rectangles."""
+    inter = rect1.intersected(rect2)
+    if inter.isNull():
+        return 0.0
+    inter_area = inter.width() * inter.height()
+    union_area = rect1.width() * rect1.height() + rect2.width() * rect2.height() - inter_area
+    if union_area == 0:
+        return 0.0
+    return inter_area / union_area
+
+
 class PredBox(QGraphicsRectItem):
     """Graphics item for a predicted box."""
 
-    def __init__(self, rect: QRectF, state: dict, class_names: List[str], window: "AnnotationWindow"):
+    HANDLE_SIZE = 10
+
+    def __init__(
+        self,
+        rect: QRectF,
+        state: dict,
+        class_names: List[str],
+        window: "AnnotationWindow",
+        img_w: int,
+        img_h: int,
+    ):
         super().__init__(rect)
         self.window = window
         self.state = state
@@ -61,6 +92,9 @@ class PredBox(QGraphicsRectItem):
         self.conf = state["conf"]
         self.accepted = state.get("accepted", False)
         self.setPen(QPen(QColor("red"), 2))
+        self.img_w = img_w
+        self.img_h = img_h
+        self._resizing: Optional[str] = None
 
         cls_id = int(self.line.split()[0])
         cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
@@ -76,7 +110,43 @@ class PredBox(QGraphicsRectItem):
         color = "green" if self.accepted else "gray"
         self.tick.setHtml(f"<div style='color:{color};background-color:white;'>✓</div>")
 
+    def _start_resize(self, event) -> bool:
+        r = self.rect()
+        pos = event.pos()
+        if abs(pos.x() - r.left()) <= self.HANDLE_SIZE and abs(pos.y() - r.top()) <= self.HANDLE_SIZE:
+            self._resizing = "topleft"
+        elif abs(pos.x() - r.right()) <= self.HANDLE_SIZE and abs(pos.y() - r.bottom()) <= self.HANDLE_SIZE:
+            self._resizing = "bottomright"
+        else:
+            self._resizing = None
+        return self._resizing is not None
+
+    def _resize(self, event):
+        if not self._resizing:
+            return
+        r = self.rect()
+        pos = event.pos()
+        if self._resizing == "topleft":
+            r.setTopLeft(pos)
+        elif self._resizing == "bottomright":
+            r.setBottomRight(pos)
+        self.setRect(r)
+        self._update_from_rect()
+
+    def _update_from_rect(self):
+        cls_id = int(self.line.split()[0])
+        self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
+        self.state["line"] = self.line
+        self.label.setPos(self.rect().left(), self.rect().top() - 20)
+        self.tick.setPos(self.rect().right() + 2, self.rect().top() - 20)
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
     def mousePressEvent(self, event):
+        if self._start_resize(event):
+            QGraphicsRectItem.mousePressEvent(self, event)
+            return
         self.accepted = not self.accepted
         self.state["accepted"] = self.accepted
         self._update_tick()
@@ -84,17 +154,42 @@ class PredBox(QGraphicsRectItem):
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
 
+    def mouseMoveEvent(self, event):
+        if self._resizing:
+            self._resize(event)
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._resizing:
+            self._resize(event)
+        self._resizing = None
+        super().mouseReleaseEvent(event)
+
 
 class GTBox(QGraphicsRectItem):
     """Graphics item for an existing ground truth box."""
 
-    def __init__(self, rect: QRectF, state: dict, class_names: List[str], window: "AnnotationWindow"):
+    HANDLE_SIZE = 10
+
+    def __init__(
+        self,
+        rect: QRectF,
+        state: dict,
+        class_names: List[str],
+        window: "AnnotationWindow",
+        img_w: int,
+        img_h: int,
+    ):
         super().__init__(rect)
         self.window = window
         self.state = state
         self.line = state["line"]
         self.kept = state.get("kept", True)
         self.setPen(QPen(QColor("green"), 2))
+        self.img_w = img_w
+        self.img_h = img_h
+        self._resizing: Optional[str] = None
 
         cls_id = int(self.line.split()[0])
         cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
@@ -110,13 +205,62 @@ class GTBox(QGraphicsRectItem):
         color = "red" if self.kept else "gray"
         self.cross.setHtml(f"<div style='color:{color};background-color:white;'>✗</div>")
 
+    def _start_resize(self, event) -> bool:
+        r = self.rect()
+        pos = event.pos()
+        if abs(pos.x() - r.left()) <= self.HANDLE_SIZE and abs(pos.y() - r.top()) <= self.HANDLE_SIZE:
+            self._resizing = "topleft"
+        elif abs(pos.x() - r.right()) <= self.HANDLE_SIZE and abs(pos.y() - r.bottom()) <= self.HANDLE_SIZE:
+            self._resizing = "bottomright"
+        else:
+            self._resizing = None
+        return self._resizing is not None
+
+    def _resize(self, event):
+        if not self._resizing:
+            return
+        r = self.rect()
+        pos = event.pos()
+        if self._resizing == "topleft":
+            r.setTopLeft(pos)
+        elif self._resizing == "bottomright":
+            r.setBottomRight(pos)
+        self.setRect(r)
+        self._update_from_rect()
+
+    def _update_from_rect(self):
+        cls_id = int(self.line.split()[0])
+        self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
+        self.state["line"] = self.line
+        self.label.setPos(self.rect().left(), self.rect().top() - 20)
+        self.cross.setPos(self.rect().right() + 2, self.rect().top() - 20)
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
     def mousePressEvent(self, event):
+        if self._start_resize(event):
+            QGraphicsRectItem.mousePressEvent(self, event)
+            return
         self.kept = not self.kept
         self.state["kept"] = self.kept
         self._update_cross()
         super().mousePressEvent(event)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
+        self.window.flag_predictions()
+
+    def mouseMoveEvent(self, event):
+        if self._resizing:
+            self._resize(event)
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._resizing:
+            self._resize(event)
+        self._resizing = None
+        super().mouseReleaseEvent(event)
 
 
 class AnnotationWindow(QMainWindow):
@@ -248,19 +392,38 @@ class AnnotationWindow(QMainWindow):
 
         for state in self.pred_states[index]:
             rect = yolo_line_to_rect(state["line"], img_w, img_h)
-            item = PredBox(rect, state, self.class_names, self)
+            item = PredBox(rect, state, self.class_names, self, img_w, img_h)
             item.setVisible(self.pred_checkbox.isChecked())
             self.scene.addItem(item)
             self.pred_items.append(item)
 
         for state in self.gt_states[index]:
             rect = yolo_line_to_rect(state["line"], img_w, img_h)
-            item = GTBox(rect, state, self.class_names, self)
+            item = GTBox(rect, state, self.class_names, self, img_w, img_h)
             item.setVisible(self.gt_checkbox.isChecked())
             self.scene.addItem(item)
             self.gt_items.append(item)
 
+        self.flag_predictions()
         self.update_final_items()
+
+    def flag_predictions(self):
+        for p in self.pred_items:
+            best_iou = 0.0
+            best_gt = None
+            for g in self.gt_items:
+                if not g.kept:
+                    continue
+                i = iou(p.rect(), g.rect())
+                if i > best_iou:
+                    best_iou = i
+                    best_gt = g
+            if best_iou == 0 or (
+                best_gt and p.line.split()[0] != best_gt.line.split()[0]
+            ):
+                p.setPen(QPen(QColor(255, 191, 0), 2))
+            else:
+                p.setPen(QPen(QColor("red"), 2))
 
     def update_image_display(self):
         img = self.images[self.index]
