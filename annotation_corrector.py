@@ -44,6 +44,11 @@ def main():
     class_names = getattr(getattr(model, "model", None), "names", [])
     image_paths = sorted(glob.glob(os.path.join(args.images, '*')))
 
+    images = []
+    predictions = []
+    labels = []
+    label_files = []
+
     for img_path in image_paths:
         image = Image.open(img_path).convert('RGB')
         processed = preprocess(image)
@@ -55,7 +60,13 @@ def main():
         if set(line for line, _ in pred_lines) == set(label_lines):
             continue
 
-        run_interface(processed, pred_lines, label_lines, label_file, class_names)
+        images.append(processed)
+        predictions.append([{"line": line, "conf": conf, "accepted": False} for line, conf in pred_lines])
+        labels.append([{"line": line, "kept": True} for line in label_lines])
+        label_files.append(label_file)
+
+    if images:
+        run_interface(images, predictions, labels, label_files, class_names)
 
 
 if __name__ == "__main__":
