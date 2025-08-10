@@ -1,3 +1,3 @@
 ultralytics
-matplotlib
 pillow
+PyQt6
