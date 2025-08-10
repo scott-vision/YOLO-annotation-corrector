@@ -19,8 +19,8 @@ class ZoomableGraphicsView(QGraphicsView):
     """Graphics view supporting zooming and panning.
 
     The view performs a simple scaling transformation when the user rotates
-    the mouse wheel.  Panning is implemented manually using the middle mouse
-    button so that left-click interactions on scene items remain available.
+    the mouse wheel.  Panning is implemented using the right mouse button so
+    that left-click interactions on scene items remain available.
     The transformation anchor is set so that zooming is centred on the cursor
     position, which provides an intuitive user experience.
     """
@@ -34,6 +34,8 @@ class ZoomableGraphicsView(QGraphicsView):
         self.setTransformationAnchor(
             QGraphicsView.ViewportAnchor.AnchorUnderMouse
         )
+        # Disable the context menu so right-click can be used for panning.
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.PreventContextMenu)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # type: ignore[override]
         """Scale the view matrix in response to a wheel event."""
@@ -44,7 +46,7 @@ class ZoomableGraphicsView(QGraphicsView):
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):  # type: ignore[override]
-        if event.button() == Qt.MouseButton.MiddleButton:
+        if event.button() == Qt.MouseButton.RightButton:
             self._last_pan_point = event.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         else:
@@ -64,7 +66,7 @@ class ZoomableGraphicsView(QGraphicsView):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):  # type: ignore[override]
-        if event.button() == Qt.MouseButton.MiddleButton:
+        if event.button() == Qt.MouseButton.RightButton:
             self._last_pan_point = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
         else:

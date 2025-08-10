@@ -184,6 +184,10 @@ class AnnotationWindow(QMainWindow):
 
     def load_image(self, index: int) -> None:
         """Load the image and associated boxes at ``index`` into the scene."""
+        # Preserve current scroll and zoom so navigation keeps the same view.
+        h_val = self.view.horizontalScrollBar().value()
+        v_val = self.view.verticalScrollBar().value()
+        transform = self.view.transform()
 
         self.scene.clear()
         self.pred_items = []
@@ -215,6 +219,11 @@ class AnnotationWindow(QMainWindow):
 
         self.flag_predictions()
         self.update_final_items()
+
+        # Restore previous view parameters
+        self.view.setTransform(transform)
+        self.view.horizontalScrollBar().setValue(h_val)
+        self.view.verticalScrollBar().setValue(v_val)
 
     def flag_predictions(self) -> None:
         """Highlight predictions that do not match any ground truth box."""
