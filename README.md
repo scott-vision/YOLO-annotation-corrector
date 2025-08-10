@@ -5,8 +5,10 @@ Interactive tool for reviewing YOLO annotations. It runs an Ultralytics YOLO mod
 ## Usage
 
 ```
-python annotation_corrector.py --images path/to/images --labels path/to/labels --model path/to/weights.pt
+python annotation_corrector.py --images path/to/images --labels path/to/original_labels --corrected path/to/corrected_labels --model path/to/weights.pt
 ```
+
+The script copies all label files from the `--labels` directory into the `--corrected` directory. Any accepted or edited labels are written to the corrected directory, leaving the originals untouched.
 
 Model predictions are drawn in **red** and existing labels in **green**. For each disagreement you can:
 

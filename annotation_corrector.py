@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+import shutil
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -85,9 +86,16 @@ def show_interface(image: Image.Image, pred_lines: List[str], label_lines: List[
 def main():
     parser = argparse.ArgumentParser(description="YOLO Annotation Corrector")
     parser.add_argument("--images", required=True, help="Path to images directory")
-    parser.add_argument("--labels", required=True, help="Path to labels directory")
+    parser.add_argument("--labels", required=True, help="Path to original labels directory")
+    parser.add_argument("--corrected", required=True, help="Directory to write corrected labels")
     parser.add_argument("--model", required=True, help="Path to YOLO model weights")
     args = parser.parse_args()
+
+    os.makedirs(args.corrected, exist_ok=True)
+    for src in glob.glob(os.path.join(args.labels, '*.txt')):
+        dst = os.path.join(args.corrected, os.path.basename(src))
+        if not os.path.exists(dst):
+            shutil.copy(src, dst)
 
     model = YOLO(args.model)
     image_paths = sorted(glob.glob(os.path.join(args.images, '*')))
@@ -100,7 +108,7 @@ def main():
 
         pred_lines = format_predictions(boxes)
         base = os.path.splitext(os.path.basename(img_path))[0]
-        label_file = os.path.join(args.labels, base + '.txt')
+        label_file = os.path.join(args.corrected, base + '.txt')
         label_lines = load_labels(label_file)
 
         if set(pred_lines) == set(label_lines):
