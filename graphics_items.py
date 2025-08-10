@@ -70,7 +70,9 @@ class PredBox(QGraphicsRectItem):
 
         self.tick = QGraphicsTextItem(self)
         self._update_tick()
-        self.tick.setPos(rect.right() + 2, rect.top() - 20)
+        # Place the tick at the bottom-left of the rectangle so it does not
+        # interfere with the resize handles located at the corners.
+        self.tick.setPos(rect.left(), rect.bottom() + 2)
 
     def _update_tick(self) -> None:
         """Display a checkmark indicating whether the prediction is accepted."""
@@ -109,7 +111,7 @@ class PredBox(QGraphicsRectItem):
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
         self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.tick.setPos(self.rect().right() + 2, self.rect().top() - 20)
+        self.tick.setPos(self.rect().left(), self.rect().bottom() + 2)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()
@@ -176,7 +178,9 @@ class GTBox(QGraphicsRectItem):
 
         self.cross = QGraphicsTextItem(self)
         self._update_cross()
-        self.cross.setPos(rect.right() + 2, rect.top() - 20)
+        # Position the cross at the bottom-left to mirror the tick placement
+        # for predicted boxes and free up space near the top-right corner.
+        self.cross.setPos(rect.left(), rect.bottom() + 2)
 
     def _update_cross(self) -> None:
         """Display a cross indicating whether the annotation is kept."""
@@ -215,7 +219,7 @@ class GTBox(QGraphicsRectItem):
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
         self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.cross.setPos(self.rect().right() + 2, self.rect().top() - 20)
+        self.cross.setPos(self.rect().left(), self.rect().bottom() + 2)
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()

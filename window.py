@@ -78,6 +78,9 @@ class AnnotationWindow(QMainWindow):
         self.label_files = label_files
         self.index = 0
 
+        # Ensure the window can receive key events for navigation.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         self.scene = QGraphicsScene(self)
         self.view = ZoomableGraphicsView(self.scene)
 
@@ -250,6 +253,19 @@ class AnnotationWindow(QMainWindow):
 
         if self.index > 0:
             self.load_image(self.index - 1)
+
+    # ------------------------------------------------------------------
+    # Keyboard navigation
+    # ------------------------------------------------------------------
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        """Handle left/right arrow keys to navigate images."""
+
+        if event.key() == Qt.Key.Key_Right:
+            self.next_image()
+        elif event.key() == Qt.Key.Key_Left:
+            self.prev_image()
+        else:
+            super().keyPressEvent(event)
 
     def collect_lines(self, idx: int) -> List[str]:
         """Gather YOLO label lines for image ``idx``."""
