@@ -11,9 +11,11 @@ from PyQt6.QtGui import QColor, QImage, QPixmap, QPen
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QGraphicsItem,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
+    QGraphicsTextItem,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -86,7 +88,7 @@ class AnnotationWindow(QMainWindow):
 
         self.pred_items: List[PredBox] = []
         self.gt_items: List[GTBox] = []
-        self.final_items: List[QGraphicsRectItem] = []
+        self.final_items: List[QGraphicsItem] = []
 
         # Checkboxes controlling visibility of annotation layers
         self.pred_checkbox = QCheckBox("Show predictions")
@@ -318,12 +320,38 @@ class AnnotationWindow(QMainWindow):
                 rect.setPen(QPen(QColor("blue"), 2))
                 self.scene.addItem(rect)
                 self.final_items.append(rect)
+                cls_id = int(item.line.split()[0])
+                cls_name = (
+                    self.class_names[cls_id]
+                    if 0 <= cls_id < len(self.class_names)
+                    else str(cls_id)
+                )
+                label = QGraphicsTextItem()
+                label.setHtml(
+                    f"<div style='color:blue;background-color:white;'>{cls_name}</div>"
+                )
+                label.setPos(item.rect().left(), item.rect().top() - 20)
+                self.scene.addItem(label)
+                self.final_items.append(label)
         for item in self.pred_items:
             if item.accepted:
                 rect = QGraphicsRectItem(item.rect())
                 rect.setPen(QPen(QColor("blue"), 2))
                 self.scene.addItem(rect)
                 self.final_items.append(rect)
+                cls_id = int(item.line.split()[0])
+                cls_name = (
+                    self.class_names[cls_id]
+                    if 0 <= cls_id < len(self.class_names)
+                    else str(cls_id)
+                )
+                label = QGraphicsTextItem()
+                label.setHtml(
+                    f"<div style='color:blue;background-color:white;'>{cls_name}</div>"
+                )
+                label.setPos(item.rect().left(), item.rect().top() - 20)
+                self.scene.addItem(label)
+                self.final_items.append(label)
 
     def preview(self) -> None:
         """Display a message box with the final labels for the current image."""
