@@ -32,6 +32,11 @@ def main():
     parser.add_argument("--labels", required=True, help="Path to original labels directory")
     parser.add_argument("--corrected", required=True, help="Directory to write corrected labels")
     parser.add_argument("--model", required=True, help="Path to YOLO model weights")
+    parser.add_argument(
+        "--predictions",
+        action="store_true",
+        help="Use cached predictions from a 'predicted_labels' folder",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.corrected, exist_ok=True)
@@ -40,8 +45,14 @@ def main():
         if not os.path.exists(dst):
             shutil.copy(src, dst)
 
-    model = load_model(args.model)
-    class_names = getattr(getattr(model, "model", None), "names", [])
+    pred_dir = os.path.join(args.corrected, "predicted_labels")
+    os.makedirs(pred_dir, exist_ok=True)
+
+    model = None
+    class_names: List[str] = []
+    if not args.predictions:
+        model = load_model(args.model)
+        class_names = getattr(getattr(model, "model", None), "names", [])
     image_paths = sorted(glob.glob(os.path.join(args.images, '*')))
 
     images = []
@@ -52,10 +63,27 @@ def main():
     for img_path in image_paths:
         image = Image.open(img_path).convert('RGB')
         processed = preprocess(image)
-        pred_lines = predict(model, processed)
         base = os.path.splitext(os.path.basename(img_path))[0]
         label_file = os.path.join(args.corrected, base + '.txt')
         label_lines = load_labels(label_file)
+        pred_file = os.path.join(pred_dir, base + '.txt')
+
+        if args.predictions:
+            pred_lines: List[tuple[str, float]] = []
+            if os.path.exists(pred_file):
+                with open(pred_file) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        parts = line.split()
+                        conf = float(parts[5]) if len(parts) >= 6 else 0.0
+                        pred_lines.append((" ".join(parts[:5]), conf))
+        else:
+            pred_lines = predict(model, processed)
+            with open(pred_file, "w") as f:
+                for line, conf in pred_lines:
+                    f.write(f"{line} {conf:.6f}\n")
 
         if set(line for line, _ in pred_lines) == set(label_lines):
             continue
