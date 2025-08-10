@@ -92,9 +92,9 @@ def main():
 
     for img_path in tqdm(image_paths, desc="Processing images"):
 
-      try:
+        try:
           image = Image.open(img_path).convert('RGB')
-      except (OSError, ValueError) as e:
+        except (OSError, ValueError) as e:
           logging.error("Failed to open image %s: %s", img_path, e)
           continue
         processed = preprocess(image)
@@ -102,7 +102,7 @@ def main():
         label_file = os.path.join(args.corrected, base + '.txt')
         label_lines = load_labels(label_file)
         pred_file = os.path.join(pred_dir, base + '.txt')
-
+    
         if args.predictions:
             pred_lines: List[tuple[str, float]] = []
             if os.path.exists(pred_file):
@@ -119,10 +119,10 @@ def main():
             with open(pred_file, "w") as f:
                 for line, conf in pred_lines:
                     f.write(f"{line} {conf:.6f}\n")
-
+    
         if set(line for line, _ in pred_lines) == set(label_lines):
             continue
-
+    
         images.append(processed)
         predictions.append([{"line": line, "conf": conf, "accepted": False} for line, conf in pred_lines])
         labels.append([{"line": line, "kept": True} for line in label_lines])
