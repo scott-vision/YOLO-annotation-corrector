@@ -2,3 +2,4 @@ ultralytics
 pillow
 PyQt6
 sahi
+tqdm
