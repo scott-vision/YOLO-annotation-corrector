@@ -35,6 +35,22 @@ def rect_to_yolo_line(rect: QRectF, cls_id: int, img_w: int, img_h: int) -> str:
     return f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}"
 
 
+class ToggleIcon(QGraphicsTextItem):
+    """Clickable icon that delegates the mouse press to a callback."""
+
+    def __init__(self, parent, callback) -> None:
+        super().__init__(parent)
+        self._callback = callback
+        # Only need to react to left clicks
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+    def mousePressEvent(self, event):  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._callback()
+        # Propagate the event in case other handlers rely on it
+        super().mousePressEvent(event)
+
+
 class PredBox(QGraphicsRectItem):
     """Graphics item for a predicted box."""
 
@@ -68,8 +84,9 @@ class PredBox(QGraphicsRectItem):
         )
         self.label.setPos(rect.left(), rect.top() - 20)
 
-        self.icon = QGraphicsTextItem(self)
-        self.icon.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        # A clickable + / - icon allowing users to toggle acceptance even when
+        # the icon sits outside of the rectangle's bounds.
+        self.icon = ToggleIcon(self, self._toggle)
         self._update_icon()
         # Place the indicator at the bottom-left of the rectangle so it does not
         # interfere with the resize handles located at the corners.
@@ -127,6 +144,16 @@ class PredBox(QGraphicsRectItem):
     # ------------------------------------------------------------------
     # Mouse events
     # ------------------------------------------------------------------
+    def _toggle(self) -> None:
+        """Toggle the accepted state and refresh related UI elements."""
+
+        self.accepted = not self.accepted
+        self.state["accepted"] = self.accepted
+        self._update_icon()
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """Toggle acceptance or start resizing on left click."""
 
@@ -137,13 +164,8 @@ class PredBox(QGraphicsRectItem):
             QGraphicsRectItem.mousePressEvent(self, event)
             return
         # Toggle accepted state when clicked.
-        self.accepted = not self.accepted
-        self.state["accepted"] = self.accepted
-        self._update_icon()
+        self._toggle()
         super().mousePressEvent(event)
-        if self.window.final_checkbox.isChecked():
-            self.window.update_final_items()
-        self.window.flag_predictions()
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self._resizing:
@@ -188,8 +210,8 @@ class GTBox(QGraphicsRectItem):
         self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
         self.label.setPos(rect.left(), rect.top() - 20)
 
-        self.icon = QGraphicsTextItem(self)
-        self.icon.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        # Clickable indicator mirroring the behaviour of PredBox
+        self.icon = ToggleIcon(self, self._toggle)
         self._update_icon()
         # Position the indicator at the bottom-left to mirror the predicted boxes.
         self.icon.setPos(rect.left(), rect.bottom() + 2)
@@ -246,6 +268,16 @@ class GTBox(QGraphicsRectItem):
     # ------------------------------------------------------------------
     # Mouse events
     # ------------------------------------------------------------------
+    def _toggle(self) -> None:
+        """Toggle whether the annotation is kept and refresh UI."""
+
+        self.kept = not self.kept
+        self.state["kept"] = self.kept
+        self._update_icon()
+        if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """Toggle whether the ground truth annotation is kept on left click."""
 
@@ -255,13 +287,8 @@ class GTBox(QGraphicsRectItem):
         if self._start_resize(event):
             QGraphicsRectItem.mousePressEvent(self, event)
             return
-        self.kept = not self.kept
-        self.state["kept"] = self.kept
-        self._update_icon()
+        self._toggle()
         super().mousePressEvent(event)
-        if self.window.final_checkbox.isChecked():
-            self.window.update_final_items()
-        self.window.flag_predictions()
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self._resizing:
