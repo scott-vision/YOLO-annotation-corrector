@@ -93,41 +93,51 @@ class AnnotationWindow(QMainWindow):
         # Checkboxes controlling visibility of annotation layers
         self.pred_checkbox = QCheckBox("Show predictions")
         self.pred_checkbox.setChecked(True)
+        self.pred_checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pred_checkbox.toggled.connect(self.toggle_predictions)  # signal/slot
 
         self.gt_checkbox = QCheckBox("Show ground truth")
         self.gt_checkbox.setChecked(True)
+        self.gt_checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.gt_checkbox.toggled.connect(self.toggle_gt)  # signal/slot
 
         self.final_checkbox = QCheckBox("Show final labels")
         self.final_checkbox.setChecked(False)
+        self.final_checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.final_checkbox.toggled.connect(self.toggle_final)  # signal/slot
 
         # Buttons for previewing, saving and navigation
         self.preview_btn = QPushButton("Preview")
+        self.preview_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.preview_btn.clicked.connect(self.preview)  # signal/slot
 
         self.save_btn = QPushButton("Save")
+        self.save_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.save_btn.clicked.connect(self.save_all)  # signal/slot
 
         self.prev_btn = QPushButton("Previous")
+        self.prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.prev_btn.clicked.connect(self.prev_image)  # signal/slot
 
         self.next_btn = QPushButton("Next")
+        self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.next_btn.clicked.connect(self.next_image)  # signal/slot
 
         self.exit_btn = QPushButton("Exit")
+        self.exit_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.exit_btn.clicked.connect(self.close)  # signal/slot
 
         # Sliders for simple brightness/contrast adjustments
         self.brightness_slider = QSlider(Qt.Orientation.Horizontal)
         self.brightness_slider.setRange(0, 200)
         self.brightness_slider.setValue(100)
+        self.brightness_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.brightness_slider.valueChanged.connect(self.update_image_display)
 
         self.contrast_slider = QSlider(Qt.Orientation.Horizontal)
         self.contrast_slider.setRange(0, 200)
         self.contrast_slider.setValue(100)
+        self.contrast_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.contrast_slider.valueChanged.connect(self.update_image_display)
 
         control_layout = QHBoxLayout()
@@ -158,6 +168,8 @@ class AnnotationWindow(QMainWindow):
         self.setCentralWidget(container)
 
         self.load_image(0)
+        # Ensure main window receives keyboard focus for arrow navigation
+        self.setFocus()
 
     # ------------------------------------------------------------------
     # Image and box management

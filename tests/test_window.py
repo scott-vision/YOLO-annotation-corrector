@@ -5,6 +5,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.append(os.getcwd())
 
 from PIL import Image
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QGraphicsTextItem
 import pytest
 
@@ -68,4 +70,28 @@ def test_navigation_preserves_view(tmp_path):
     assert window.view.transform().m11() == pytest.approx(2)
     assert window.view.horizontalScrollBar().value() == 10
     assert window.view.verticalScrollBar().value() == 20
+
+
+def test_arrow_keys_navigate_after_control_interaction(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img, img]
+    preds = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.8, "accepted": False}],
+    ]
+    gts = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+    ]
+    label_files = [str(tmp_path / "a.txt"), str(tmp_path / "b.txt")]
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"])
+
+    # Interact with a control and ensure arrow keys still navigate images
+    window.pred_checkbox.click()
+    assert window.index == 0
+    QTest.keyClick(window, Qt.Key.Key_Right)
+    assert window.index == 1
+    QTest.keyClick(window, Qt.Key.Key_Left)
+    assert window.index == 0
 
