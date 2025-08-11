@@ -76,13 +76,13 @@ class PredBox(QGraphicsRectItem):
         self.icon.setPos(rect.left(), rect.bottom() + 2)
 
     def _update_icon(self) -> None:
-        """Display a tick to add or a cross to remove a prediction."""
+        """Display a '+' to add or a '-' to remove a prediction."""
 
         if self.accepted:
-            symbol = "✗"
+            symbol = "-"
             color = "red"
         else:
-            symbol = "✓"
+            symbol = "+"
             color = "green"
         self.icon.setHtml(
             f"<div style='color:{color};background-color:white;'>{symbol}</div>"
@@ -195,13 +195,13 @@ class GTBox(QGraphicsRectItem):
         self.icon.setPos(rect.left(), rect.bottom() + 2)
 
     def _update_icon(self) -> None:
-        """Display a cross to remove or a tick to add the annotation."""
+        """Display a '-' to remove or a '+' to add the annotation."""
 
         if self.kept:
-            symbol = "✗"
+            symbol = "-"
             color = "red"
         else:
-            symbol = "✓"
+            symbol = "+"
             color = "green"
         self.icon.setHtml(
             f"<div style='color:{color};background-color:white;'>{symbol}</div>"
