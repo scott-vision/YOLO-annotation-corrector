@@ -25,7 +25,7 @@ class DummyWindow:
         pass
 
 
-def test_predbox_state_update():
+def test_predbox_icon_symbols():
     app = QApplication.instance() or QApplication([])
     scene = QGraphicsScene()
     view = ZoomableGraphicsView(scene)
@@ -36,13 +36,13 @@ def test_predbox_state_update():
     scene.addItem(box)
     view.show()
     QTest.qWait(10)  # exercise event loop
+    assert "+" in box.icon.toHtml()
     box.accepted = True
     box._update_icon()
-    assert box.accepted is True
-    assert "✗" in box.icon.toHtml()
+    assert "-" in box.icon.toHtml()
 
 
-def test_gtbox_state_update():
+def test_gtbox_icon_symbols():
     app = QApplication.instance() or QApplication([])
     scene = QGraphicsScene()
     view = ZoomableGraphicsView(scene)
@@ -53,8 +53,8 @@ def test_gtbox_state_update():
     scene.addItem(box)
     view.show()
     QTest.qWait(10)
+    assert "-" in box.icon.toHtml()
     box.kept = False
     box._update_icon()
-    assert box.kept is False
-    assert "✓" in box.icon.toHtml()
+    assert "+" in box.icon.toHtml()
 
