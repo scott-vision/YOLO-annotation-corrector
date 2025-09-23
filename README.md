@@ -10,8 +10,12 @@ The application provides a single PyQt6 interface that lets you work through all
 python annotation_corrector.py --images path/to/images --labels path/to/original_labels --corrected path/to/corrected_labels --model path/to/weights.pt
 ```
 
+If you prefer to avoid the command line, simply run the script without any arguments. A setup window will appear that lets you
+select the required folders and model weights interactively. The "Use cached predictions" checkbox mirrors the `--predictions`
+flag described below.
+
 Predictions are cached in a `predicted_labels` subdirectory inside the corrected labels folder. On subsequent runs you can skip
-recomputing predictions by adding the `--predictions` flag:
+recomputing predictions by adding the `--predictions` flag (or enabling the checkbox in the setup window):
 
 ```
 python annotation_corrector.py --images path/to/images --labels path/to/original_labels --corrected path/to/corrected_labels --model path/to/weights.pt --predictions
