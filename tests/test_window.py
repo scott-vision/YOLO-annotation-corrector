@@ -14,6 +14,33 @@ from progress import ProgressTracker
 from window import AnnotationWindow
 
 
+class DummySamHelper:
+    def __init__(self, width: float = 1.0) -> None:
+        self.width = width
+        self.image_size = (0, 0)
+        self.points = []
+        self.rois = []
+
+    def set_image(self, image: Image.Image) -> None:
+        self.image_size = image.size
+
+    def predict_box(self, point, roi=None):
+        self.points.append(point)
+        self.rois.append(roi)
+        if not self.image_size:
+            return None
+        w, h = self.image_size
+        half = self.width / 2
+        x, y = point
+        x1 = max(0.0, x - half)
+        y1 = max(0.0, y - half)
+        x2 = min(float(w), x + half)
+        y2 = min(float(h), y + half)
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return (x1, y1, x2, y2)
+
+
 def test_annotation_window_smoke(tmp_path):
     """Smoke test ensuring the window can be constructed and basic methods run."""
 
@@ -123,4 +150,70 @@ def test_completion_toggle_updates_tracker(tmp_path):
     window.complete_checkbox.setChecked(False)
     assert not tracker.is_completed(image_id)
     assert "Reviewed 0/1" in window.progress_label.text()
+
+
+def test_sam_tighten_and_revert(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img]
+    preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}]]
+    gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
+    label_files = [str(tmp_path / "labels.txt")]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    helper = DummySamHelper(width=1.0)
+    window = AnnotationWindow(
+        images,
+        preds,
+        gts,
+        label_files,
+        ["obj"],
+        progress_tracker=tracker,
+        sam_helper=helper,
+    )
+    original_pred = window.pred_states[0][0]["line"]
+    original_gt = window.gt_states[0][0]["line"]
+
+    window.apply_sam_to_all()
+
+    tightened_pred = window.pred_states[0][0]["line"]
+    tightened_gt = window.gt_states[0][0]["line"]
+    assert tightened_pred.endswith("0.100000 0.100000")
+    assert tightened_gt.endswith("0.100000 0.100000")
+    assert tightened_pred != original_pred
+    assert helper.points  # ensure the helper was queried
+    assert helper.rois[0] is not None
+
+    window.revert_sam_changes()
+    assert window.pred_states[0][0]["line"] == original_pred
+    assert window.gt_states[0][0]["line"] == original_gt
+
+
+def test_single_sam_restricts_containing_boxes(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img]
+    preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}]]
+    gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
+    label_files = [str(tmp_path / "labels.txt")]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    helper = DummySamHelper(width=1.0)
+    window = AnnotationWindow(
+        images,
+        preds,
+        gts,
+        label_files,
+        ["obj"],
+        progress_tracker=tracker,
+        sam_helper=helper,
+    )
+
+    original_line = window.gt_states[0][0]["line"]
+    changed = window.apply_single_sam_at((5.0, 5.0))
+    assert changed
+    assert window.gt_states[0][0]["line"].endswith("0.100000 0.100000")
+    assert window.pred_states[0][0]["line"].endswith("0.100000 0.100000")
+    assert helper.rois[-1] is not None
+
+    window.revert_sam_changes()
+    assert window.gt_states[0][0]["line"] == original_line
 

@@ -11,14 +11,14 @@ python annotation_corrector.py --images path/to/images --labels path/to/original
 ```
 
 If you prefer to avoid the command line, simply run the script without any arguments. A setup window will appear that lets you
-select the required folders and model weights interactively. The "Use cached predictions" checkbox mirrors the `--predictions`
-flag described below.
+select the required folders, YOLO model weights, and optional SAM/SAM2 weights interactively. The "Use cached predictions"
+checkbox mirrors the `--predictions` flag described below.
 
 Predictions are cached in a `predicted_labels` subdirectory inside the corrected labels folder. On subsequent runs you can skip
 recomputing predictions by adding the `--predictions` flag (or enabling the checkbox in the setup window):
 
 ```
-python annotation_corrector.py --images path/to/images --labels path/to/original_labels --corrected path/to/corrected_labels --model path/to/weights.pt --predictions
+python annotation_corrector.py --images path/to/images --labels path/to/original_labels --corrected path/to/corrected_labels --model path/to/weights.pt --predictions --sam path/to/sam_weights.pt
 ```
 
 The script copies all label files from the `--labels` directory into the `--corrected` directory. Any accepted or edited labels are written to the corrected directory, leaving the originals untouched. Within the GUI you may:
@@ -30,5 +30,8 @@ The script copies all label files from the `--labels` directory into the `--corr
 * Move between images with **Previous** and **Next**.
 * Press **Save** to write labels for all images and **Exit** to close the tool.
 * Use **Preview** to view the final labels for the current image.
+* Click **SAM2 tighten** to refine every box in the current image using the loaded SAM/SAM2 model.
+* Click **Single SAM2** to select a single tightening point; the next click inside the image runs SAM2 at that point and shrinks any containing boxes to the returned mask box.
+* Use **Revert SAM2** to undo the most recent tightening adjustment for the current image.
 
 Image preprocessing is defined in `preprocessing.py` and currently returns images unchanged.
