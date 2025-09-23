@@ -82,15 +82,12 @@ class PredBox(QGraphicsRectItem):
         self.label.setHtml(
             f"<div style='background-color:white;'>{cls_name}:{self.conf:.2f}</div>"
         )
-        self.label.setPos(rect.left(), rect.top() - 20)
 
         # A clickable + / - icon allowing users to toggle acceptance even when
         # the icon sits outside of the rectangle's bounds.
         self.icon = ToggleIcon(self, self._toggle)
         self._update_icon()
-        # Place the indicator at the bottom-left of the rectangle so it does not
-        # interfere with the resize handles located at the corners.
-        self.icon.setPos(rect.left(), rect.bottom() + 2)
+        self._position_items()
 
     def _update_icon(self) -> None:
         """Display a '+' to add or a '-' to remove a prediction."""
@@ -104,6 +101,19 @@ class PredBox(QGraphicsRectItem):
         self.icon.setHtml(
             f"<div style='color:{color};background-color:white;'>{symbol}</div>"
         )
+        self._position_items()
+
+    def _position_items(self) -> None:
+        """Position label beneath the box and icon beneath the label."""
+
+        rect = self.rect()
+        label_x = rect.left()
+        label_y = rect.bottom() + 2
+        self.label.setPos(label_x, label_y)
+
+        label_height = self.label.boundingRect().height()
+        icon_y = label_y + label_height + 2
+        self.icon.setPos(label_x, icon_y)
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -135,8 +145,7 @@ class PredBox(QGraphicsRectItem):
         cls_id = int(self.line.split()[0])
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
-        self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.icon.setPos(self.rect().left(), self.rect().bottom() + 2)
+        self._position_items()
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()
@@ -208,13 +217,11 @@ class GTBox(QGraphicsRectItem):
         cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
         self.label = QGraphicsTextItem(self)
         self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
-        self.label.setPos(rect.left(), rect.top() - 20)
 
         # Clickable indicator mirroring the behaviour of PredBox
         self.icon = ToggleIcon(self, self._toggle)
         self._update_icon()
-        # Position the indicator at the bottom-left to mirror the predicted boxes.
-        self.icon.setPos(rect.left(), rect.bottom() + 2)
+        self._position_items()
 
     def _update_icon(self) -> None:
         """Display a '-' to remove or a '+' to add the annotation."""
@@ -228,6 +235,20 @@ class GTBox(QGraphicsRectItem):
         self.icon.setHtml(
             f"<div style='color:{color};background-color:white;'>{symbol}</div>"
         )
+        self._position_items()
+
+    def _position_items(self) -> None:
+        """Place the label and icon near the top-left of the bounding box."""
+
+        rect = self.rect()
+        margin = 2
+        label_x = rect.left() + margin
+        label_y = rect.top() + margin
+        self.label.setPos(label_x, label_y)
+
+        label_width = self.label.boundingRect().width()
+        icon_x = label_x + label_width + margin
+        self.icon.setPos(icon_x, label_y)
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -259,8 +280,7 @@ class GTBox(QGraphicsRectItem):
         cls_id = int(self.line.split()[0])
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
-        self.label.setPos(self.rect().left(), self.rect().top() - 20)
-        self.icon.setPos(self.rect().left(), self.rect().bottom() + 2)
+        self._position_items()
         if self.window.final_checkbox.isChecked():
             self.window.update_final_items()
         self.window.flag_predictions()
