@@ -35,7 +35,7 @@ def test_class_names_loaded_with_predictions(tmp_path, monkeypatch):
         def __init__(self):
             self.model = type("m", (), {"names": ["cls"]})()
 
-    def fake_load_model(path):
+    def fake_load_model(path, **kwargs):
         return DummyModel()
 
     captured = {}
@@ -70,7 +70,7 @@ def test_configuration_file_applied(tmp_path):
     images_dir.mkdir()
     config_path = images_dir / annotation_corrector.CONFIG_FILENAME
     config_path.write_text(
-        '{"labels": "L", "corrected": "C", "model": "M", "predictions": true}'
+        '{"labels": "L", "corrected": "C", "model": "M", "predictions": true, "sahi": true}'
     )
 
     args = argparse.Namespace(
@@ -80,6 +80,7 @@ def test_configuration_file_applied(tmp_path):
         model="",
         sam=None,
         predictions=False,
+        sahi=False,
     )
 
     loaded = annotation_corrector._load_config_file(str(config_path))
@@ -90,6 +91,7 @@ def test_configuration_file_applied(tmp_path):
     assert updated.corrected == "C"
     assert updated.model == "M"
     assert updated.predictions is True
+    assert updated.sahi is True
 
 
 def test_progress_resume_start_index(tmp_path, monkeypatch):
@@ -118,7 +120,7 @@ def test_progress_resume_start_index(tmp_path, monkeypatch):
         def __init__(self):
             self.model = type("m", (), {"names": ["cls"]})()
 
-    def fake_load_model(path):
+    def fake_load_model(path, **kwargs):
         return DummyModel()
 
     captured = {}
