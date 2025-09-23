@@ -169,6 +169,10 @@ class AnnotationWindow(QMainWindow):
         self.prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.prev_btn.clicked.connect(self.prev_image)  # signal/slot
 
+        self.next_todo_btn = QPushButton("Next TODO")
+        self.next_todo_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.next_todo_btn.clicked.connect(self.next_unreviewed_image)
+
         self.next_btn = QPushButton("Next")
         self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.next_btn.clicked.connect(self.next_image)  # signal/slot
@@ -202,6 +206,7 @@ class AnnotationWindow(QMainWindow):
         control_layout.addWidget(self.sam_revert_btn)
         control_layout.addWidget(self.single_sam_btn)
         control_layout.addWidget(self.prev_btn)
+        control_layout.addWidget(self.next_todo_btn)
         control_layout.addWidget(self.next_btn)
         control_layout.addWidget(self.exit_btn)
         controls = QWidget()
@@ -267,6 +272,7 @@ class AnnotationWindow(QMainWindow):
         self.gt_items = []
         self.final_items = []
         self.index = index
+        self._record_last_image()
 
         img = self.images[index]
         if self.single_sam_btn.isChecked():
@@ -303,6 +309,14 @@ class AnnotationWindow(QMainWindow):
         self.view.setTransform(transform)
         self.view.horizontalScrollBar().setValue(h_val)
         self.view.verticalScrollBar().setValue(v_val)
+
+    def _record_last_image(self) -> None:
+        """Persist the identifier for the currently displayed image."""
+
+        if self.progress_tracker is None or not self.image_ids:
+            return
+        image_id = self.image_ids[self.index]
+        self.progress_tracker.set_last_image(image_id)
 
     def update_completion_controls(self) -> None:
         """Refresh completion checkbox and progress label for the current image."""
@@ -344,10 +358,51 @@ class AnnotationWindow(QMainWindow):
     def completion_toggled(self, state: bool) -> None:
         """Handle the user toggling the completion checkbox."""
 
+        self._apply_completion_state(state)
+
+    def _apply_completion_state(self, state: bool) -> None:
+        """Persist completion state and refresh related UI."""
+
+        if not self.completed_states:
+            return
         self.completed_states[self.index] = state
         if self.progress_tracker is not None:
             self.progress_tracker.set_completed(self.image_ids[self.index], state)
         self.update_progress_label()
+
+    def mark_current_completed(self) -> None:
+        """Mark the current image as reviewed using the completion checkbox."""
+
+        if not self.completed_states:
+            return
+        if not self.completed_states[self.index]:
+            self.complete_checkbox.setChecked(True)
+        else:
+            self.update_progress_label()
+
+    def _find_next_unreviewed(self, start_index: int) -> Optional[int]:
+        """Return the next index with a pending review or ``None`` if all done."""
+
+        total = len(self.completed_states)
+        if total == 0:
+            return None
+        start_index %= total
+        for offset in range(total):
+            idx = (start_index + offset) % total
+            if not self.completed_states[idx]:
+                return idx
+        return None
+
+    def next_unreviewed_image(self) -> None:
+        """Jump to the next image that has not been marked as reviewed."""
+
+        total = len(self.completed_states)
+        if total == 0:
+            return
+        start = (self.index + 1) % total
+        next_index = self._find_next_unreviewed(start)
+        if next_index is not None and next_index != self.index:
+            self.load_image(next_index)
 
     def flag_predictions(self) -> None:
         """Highlight predictions that do not match any ground truth box."""
@@ -542,8 +597,21 @@ class AnnotationWindow(QMainWindow):
         return changed
 
     def eventFilter(self, obj, event):  # type: ignore[override]
-        if obj is self.view.viewport() and self._waiting_for_single_sam:
-            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+        if obj is self.view.viewport():
+            if event.type() == QEvent.Type.KeyPress:
+                if event.key() == Qt.Key.Key_Right:
+                    self.next_image()
+                    event.accept()
+                    return True
+                if event.key() == Qt.Key.Key_Left:
+                    self.prev_image()
+                    event.accept()
+                    return True
+                if event.key() == Qt.Key.Key_D:
+                    self.mark_current_completed()
+                    event.accept()
+                    return True
+            if self._waiting_for_single_sam and event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                 scene_pos = self.view.mapToScene(event.position().toPoint())
                 image_pos = self.background_item.mapFromScene(scene_pos)
                 if not self.background_item.contains(image_pos):
@@ -587,6 +655,8 @@ class AnnotationWindow(QMainWindow):
             self.next_image()
         elif event.key() == Qt.Key.Key_Left:
             self.prev_image()
+        elif event.key() == Qt.Key.Key_D:
+            self.mark_current_completed()
         else:
             super().keyPressEvent(event)
 

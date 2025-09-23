@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Optional
 
 
 class ProgressTracker:
@@ -12,13 +12,16 @@ class ProgressTracker:
 
     The tracker stores a mapping from an image identifier (typically the
     filename without extension) to a boolean flag indicating whether the image
-    has been reviewed.  The data is written to a JSON file so progress can be
-    restored on subsequent runs of the tool.
+    has been reviewed.  The most recently viewed image identifier is also
+    persisted so a later session can resume at the same position.  The data is
+    written to a JSON file so progress can be restored on subsequent runs of
+    the tool.
     """
 
     def __init__(self, path: str) -> None:
         self.path = path
         self.completed: Dict[str, bool] = {}
+        self.last_image_id: Optional[str] = None
         self._load()
 
     # ------------------------------------------------------------------
@@ -43,6 +46,12 @@ class ProgressTracker:
         else:
             self.completed = {}
 
+        last_image = data.get("last_image") if isinstance(data, dict) else None
+        if isinstance(last_image, str):
+            self.last_image_id = last_image
+        else:
+            self.last_image_id = None
+
     def save(self) -> None:
         """Write the current progress mapping back to disk."""
 
@@ -50,7 +59,7 @@ class ProgressTracker:
         if directory:
             os.makedirs(directory, exist_ok=True)
         tmp_path = self.path + ".tmp"
-        data = {"completed": self.completed}
+        data = {"completed": self.completed, "last_image": self.last_image_id}
         with open(tmp_path, "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)
         os.replace(tmp_path, self.path)
@@ -72,15 +81,27 @@ class ProgressTracker:
             self.completed.pop(image_id, None)
         self.save()
 
+    def set_last_image(self, image_id: Optional[str]) -> None:
+        """Persist the identifier of the most recently viewed image."""
+
+        if image_id == self.last_image_id:
+            return
+        self.last_image_id = image_id
+        self.save()
+
     def prune(self, valid_ids: Iterable[str]) -> None:
         """Remove entries for images that are no longer part of the session."""
 
         valid = set(valid_ids)
         removed = False
+        last_removed = False
         for key in list(self.completed):
             if key not in valid:
                 del self.completed[key]
                 removed = True
-        if removed:
+        if self.last_image_id is not None and self.last_image_id not in valid:
+            self.last_image_id = None
+            last_removed = True
+        if removed or last_removed:
             self.save()
 

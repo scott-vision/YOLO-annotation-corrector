@@ -152,6 +152,89 @@ def test_completion_toggle_updates_tracker(tmp_path):
     assert "Reviewed 0/1" in window.progress_label.text()
 
 
+def test_done_shortcut_marks_reviewed(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img]
+    preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}]]
+    gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
+    label_files = [str(tmp_path / "labels.txt")]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
+
+    image_id = window.image_ids[0]
+    assert not tracker.is_completed(image_id)
+
+    QTest.keyClick(window, Qt.Key.Key_D)
+
+    assert tracker.is_completed(image_id)
+    assert window.completed_states[0]
+    assert window.complete_checkbox.isChecked()
+    assert "Reviewed 1/1" in window.progress_label.text()
+
+
+def test_next_todo_button_jumps_pending(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img, img, img]
+    preds = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.8, "accepted": False}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.7, "accepted": False}],
+    ]
+    gts = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+    ]
+    label_files = [
+        str(tmp_path / "a.txt"),
+        str(tmp_path / "b.txt"),
+        str(tmp_path / "c.txt"),
+    ]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
+
+    # Mark the first and third images as reviewed
+    window.complete_checkbox.setChecked(True)
+    window.next_image()
+    window.next_image()
+    window.complete_checkbox.setChecked(True)
+
+    assert window.completed_states == [True, False, True]
+    assert tracker.is_completed(window.image_ids[0])
+    assert tracker.is_completed(window.image_ids[2])
+
+    window.next_todo_btn.click()
+
+    assert window.index == 1
+    assert not window.completed_states[1]
+    assert not window.complete_checkbox.isChecked()
+
+
+def test_last_viewed_image_persisted(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img, img]
+    preds = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.8, "accepted": False}],
+    ]
+    gts = [
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+        [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
+    ]
+    label_files = [str(tmp_path / "a.txt"), str(tmp_path / "b.txt")]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
+
+    assert tracker.last_image_id == window.image_ids[0]
+
+    window.next_image()
+
+    assert tracker.last_image_id == window.image_ids[1]
+
+
 def test_sam_tighten_and_revert(tmp_path):
     app = QApplication.instance() or QApplication([])
     img = Image.new("RGB", (10, 10))
