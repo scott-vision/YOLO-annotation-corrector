@@ -3,3 +3,4 @@ pillow
 PyQt6
 sahi
 tqdm
+numpy

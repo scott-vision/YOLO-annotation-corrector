@@ -32,6 +32,7 @@ class AnnotationSetupDialog(QDialog):
         self.labels_edit = QLineEdit(initial.get("labels", ""))
         self.corrected_edit = QLineEdit(initial.get("corrected", ""))
         self.model_edit = QLineEdit(initial.get("model", ""))
+        self.sam_edit = QLineEdit(initial.get("sam", ""))
 
         self.images_button = QPushButton("Browse…")
         self.images_button.clicked.connect(self._browse_images)
@@ -44,6 +45,9 @@ class AnnotationSetupDialog(QDialog):
 
         self.model_button = QPushButton("Browse…")
         self.model_button.clicked.connect(self._browse_model)
+
+        self.sam_button = QPushButton("Browse…")
+        self.sam_button.clicked.connect(self._browse_sam)
 
         self.predictions_checkbox = QCheckBox(
             "Use cached predictions if available"
@@ -67,7 +71,11 @@ class AnnotationSetupDialog(QDialog):
         layout.addWidget(self.model_edit, 3, 1)
         layout.addWidget(self.model_button, 3, 2)
 
-        layout.addWidget(self.predictions_checkbox, 4, 0, 1, 3)
+        layout.addWidget(QLabel("SAM weights (optional)"), 4, 0)
+        layout.addWidget(self.sam_edit, 4, 1)
+        layout.addWidget(self.sam_button, 4, 2)
+
+        layout.addWidget(self.predictions_checkbox, 5, 0, 1, 3)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
@@ -75,7 +83,7 @@ class AnnotationSetupDialog(QDialog):
         )
         self.button_box.accepted.connect(self._accept)
         self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box, 5, 0, 1, 3)
+        layout.addWidget(self.button_box, 6, 0, 1, 3)
 
         for edit in (
             self.images_edit,
@@ -140,6 +148,16 @@ class AnnotationSetupDialog(QDialog):
         if file_path:
             self.model_edit.setText(file_path)
 
+    def _browse_sam(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select SAM weights",
+            self.sam_edit.text() or os.getcwd(),
+            "PyTorch models (*.pt *.pth);;All files (*)",
+        )
+        if file_path:
+            self.sam_edit.setText(file_path)
+
     def _update_accept_enabled(self) -> None:
         ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is None:
@@ -164,6 +182,7 @@ class AnnotationSetupDialog(QDialog):
         labels = self.labels_edit.text().strip()
         corrected = self.corrected_edit.text().strip()
         model = self.model_edit.text().strip()
+        sam = self.sam_edit.text().strip()
 
         if not os.path.isdir(images):
             self._show_error("Images folder does not exist.")
@@ -193,12 +212,16 @@ class AnnotationSetupDialog(QDialog):
         if not os.path.isfile(model):
             self._show_error("Model weights file does not exist.")
             return
+        if sam and not os.path.isfile(sam):
+            self._show_error("SAM weights file does not exist.")
+            return
 
         self._result = {
             "images": images,
             "labels": labels,
             "corrected": corrected,
             "model": model,
+            "sam": sam,
             "predictions": self.predictions_checkbox.isChecked(),
         }
         self.accept()

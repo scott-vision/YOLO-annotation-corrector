@@ -19,8 +19,9 @@ else:
 
 from preprocessing import preprocess
 from progress import ProgressTracker
-from window import run_interface
+from sam_integration import SamTightener
 from setup_dialog import prompt_for_configuration
+from window import run_interface
 
 try:  # Optional dependency until UI is requested
     from PyQt6.QtWidgets import QApplication
@@ -85,6 +86,7 @@ def gather_configuration_from_ui(
             "labels": args.labels or "",
             "corrected": args.corrected or "",
             "model": args.model or "",
+            "sam": args.sam or "",
             "predictions": args.predictions,
         }
     )
@@ -96,6 +98,7 @@ def gather_configuration_from_ui(
     args.corrected = config["corrected"]
     args.model = config["model"]
     args.predictions = bool(config.get("predictions"))
+    args.sam = config.get("sam") or None
     return args
 
 
@@ -109,6 +112,10 @@ def main():
         "--predictions",
         action="store_true",
         help="Use cached predictions from a 'predicted_labels' folder",
+    )
+    parser.add_argument(
+        "--sam",
+        help="Path to a SAM or SAM2 model for tightening bounding boxes",
     )
     args = parser.parse_args()
 
@@ -138,6 +145,11 @@ def main():
 
     model = load_model(args.model)
     class_names: List[str] = getattr(getattr(model, "model", None), "names", [])
+    sam_helper = None
+    if args.sam:
+        if not os.path.isfile(args.sam):
+            raise FileNotFoundError(f"SAM weights file '{args.sam}' does not exist.")
+        sam_helper = SamTightener(args.sam)
     if args.predictions:
         # When using cached predictions we still need the class names but can
         # discard the model to avoid unnecessary memory usage.
@@ -222,6 +234,7 @@ def main():
             progress_tracker=progress_tracker,
             completed=completed_flags,
             start_index=start_index,
+            sam_helper=sam_helper,
         )
 
 
