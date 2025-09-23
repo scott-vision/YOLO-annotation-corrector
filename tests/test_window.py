@@ -10,6 +10,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QGraphicsTextItem
 import pytest
 
+from progress import ProgressTracker
 from window import AnnotationWindow
 
 
@@ -22,7 +23,8 @@ def test_annotation_window_smoke(tmp_path):
     preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}]]
     gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
     label_files = [str(tmp_path / "labels.txt")]
-    window = AnnotationWindow(images, preds, gts, label_files, ["obj"])
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
 
     # Trigger a few simple operations
     window.flag_predictions()
@@ -38,7 +40,8 @@ def test_final_items_show_classes(tmp_path):
     preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": True}]]
     gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
     label_files = [str(tmp_path / "labels.txt")]
-    window = AnnotationWindow(images, preds, gts, label_files, ["obj"])
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
     window.final_checkbox.setChecked(True)
     window.update_final_items()
     texts = [
@@ -62,7 +65,8 @@ def test_navigation_preserves_view(tmp_path):
         [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
     ]
     label_files = [str(tmp_path / "a.txt"), str(tmp_path / "b.txt")]
-    window = AnnotationWindow(images, preds, gts, label_files, ["obj"])
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
     window.view.scale(2, 2)
     window.view.horizontalScrollBar().setValue(10)
     window.view.verticalScrollBar().setValue(20)
@@ -85,7 +89,8 @@ def test_arrow_keys_navigate_after_control_interaction(tmp_path):
         [{"line": "0 0.5 0.5 0.2 0.2", "kept": True}],
     ]
     label_files = [str(tmp_path / "a.txt"), str(tmp_path / "b.txt")]
-    window = AnnotationWindow(images, preds, gts, label_files, ["obj"])
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
 
     # Interact with a control and ensure arrow keys still navigate images
     window.pred_checkbox.click()
@@ -94,4 +99,28 @@ def test_arrow_keys_navigate_after_control_interaction(tmp_path):
     assert window.index == 1
     QTest.keyClick(window, Qt.Key.Key_Left)
     assert window.index == 0
+
+
+def test_completion_toggle_updates_tracker(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    img = Image.new("RGB", (10, 10))
+    images = [img]
+    preds = [[{"line": "0 0.5 0.5 0.2 0.2", "conf": 0.9, "accepted": False}]]
+    gts = [[{"line": "0 0.5 0.5 0.2 0.2", "kept": True}]]
+    label_path = tmp_path / "labels.txt"
+    label_files = [str(label_path)]
+    tracker = ProgressTracker(str(tmp_path / "progress.json"))
+    window = AnnotationWindow(images, preds, gts, label_files, ["obj"], progress_tracker=tracker)
+
+    image_id = window.image_ids[0]
+    assert not tracker.is_completed(image_id)
+    assert "Reviewed 0/1" in window.progress_label.text()
+
+    window.complete_checkbox.setChecked(True)
+    assert tracker.is_completed(image_id)
+    assert "Reviewed 1/1" in window.progress_label.text()
+
+    window.complete_checkbox.setChecked(False)
+    assert not tracker.is_completed(image_id)
+    assert "Reviewed 0/1" in window.progress_label.text()
 

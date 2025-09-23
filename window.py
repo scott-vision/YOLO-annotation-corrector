@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Optional
 
 from PIL import ImageEnhance
 from PyQt6.QtCore import Qt, QRectF
@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from graphics_items import GTBox, PredBox
+from progress import ProgressTracker
 from view_utils import ZoomableGraphicsView
 
 
@@ -70,6 +71,10 @@ class AnnotationWindow(QMainWindow):
         labels: List[List[dict]],
         label_files: List[str],
         class_names: List[str],
+        image_ids: Optional[List[str]] = None,
+        progress_tracker: Optional[ProgressTracker] = None,
+        completed: Optional[List[bool]] = None,
+        start_index: int = 0,
     ) -> None:
         super().__init__()
         self.setWindowTitle("YOLO Annotation Corrector")
@@ -78,6 +83,20 @@ class AnnotationWindow(QMainWindow):
         self.pred_states = predictions
         self.gt_states = labels
         self.label_files = label_files
+        if image_ids is None:
+            image_ids = [
+                os.path.splitext(os.path.basename(path))[0]
+                for path in label_files
+            ]
+        if len(image_ids) != len(self.images):
+            raise ValueError("The number of image identifiers must match the images provided.")
+        self.image_ids = image_ids
+        if completed is None:
+            completed = [False] * len(self.images)
+        if len(completed) != len(self.images):
+            raise ValueError("The completed list must match the number of images.")
+        self.completed_states = list(completed)
+        self.progress_tracker = progress_tracker
         self.index = 0
 
         # Ensure the window can receive key events for navigation.
@@ -105,6 +124,15 @@ class AnnotationWindow(QMainWindow):
         self.final_checkbox.setChecked(False)
         self.final_checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.final_checkbox.toggled.connect(self.toggle_final)  # signal/slot
+
+        self.complete_checkbox = QCheckBox("Mark image reviewed")
+        self.complete_checkbox.setChecked(False)
+        self.complete_checkbox.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.complete_checkbox.toggled.connect(self.completion_toggled)
+
+        self.progress_label = QLabel("")
+        self.progress_label.setMinimumWidth(220)
+        self.progress_label.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Buttons for previewing, saving and navigation
         self.preview_btn = QPushButton("Preview")
@@ -144,6 +172,8 @@ class AnnotationWindow(QMainWindow):
         control_layout.addWidget(self.pred_checkbox)
         control_layout.addWidget(self.gt_checkbox)
         control_layout.addWidget(self.final_checkbox)
+        control_layout.addWidget(self.complete_checkbox)
+        control_layout.addWidget(self.progress_label)
         control_layout.addWidget(self.preview_btn)
         control_layout.addWidget(self.save_btn)
         control_layout.addWidget(self.prev_btn)
@@ -167,7 +197,8 @@ class AnnotationWindow(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-        self.load_image(0)
+        target_index = min(max(start_index, 0), len(self.images) - 1) if self.images else 0
+        self.load_image(target_index)
         # Ensure main window receives keyboard focus for arrow navigation
         self.setFocus()
 
@@ -201,6 +232,10 @@ class AnnotationWindow(QMainWindow):
         v_val = self.view.verticalScrollBar().value()
         transform = self.view.transform()
 
+        if not self.images:
+            return
+
+        index = min(max(index, 0), len(self.images) - 1)
         self.scene.clear()
         self.pred_items = []
         self.gt_items = []
@@ -231,11 +266,43 @@ class AnnotationWindow(QMainWindow):
 
         self.flag_predictions()
         self.update_final_items()
+        self.update_completion_controls()
 
         # Restore previous view parameters
         self.view.setTransform(transform)
         self.view.horizontalScrollBar().setValue(h_val)
         self.view.verticalScrollBar().setValue(v_val)
+
+    def update_completion_controls(self) -> None:
+        """Refresh completion checkbox and progress label for the current image."""
+
+        self.complete_checkbox.blockSignals(True)
+        self.complete_checkbox.setChecked(self.completed_states[self.index])
+        self.complete_checkbox.blockSignals(False)
+        self.update_progress_label()
+
+    def update_progress_label(self) -> None:
+        """Display a concise summary of review progress."""
+
+        total = len(self.images)
+        if total == 0:
+            self.progress_label.setText("No images loaded")
+            return
+        reviewed = sum(1 for state in self.completed_states if state)
+        current = self.index + 1
+        name = self.image_ids[self.index]
+        status = "Reviewed" if self.completed_states[self.index] else "Pending"
+        self.progress_label.setText(
+            f"Image {current}/{total} • Reviewed {reviewed}/{total} • {name} ({status})"
+        )
+
+    def completion_toggled(self, state: bool) -> None:
+        """Handle the user toggling the completion checkbox."""
+
+        self.completed_states[self.index] = state
+        if self.progress_tracker is not None:
+            self.progress_tracker.set_completed(self.image_ids[self.index], state)
+        self.update_progress_label()
 
     def flag_predictions(self) -> None:
         """Highlight predictions that do not match any ground truth box."""
@@ -388,11 +455,25 @@ def run_interface(
     labels: List[List[dict]],
     label_files: List[str],
     class_names: List[str],
+    image_ids: Optional[List[str]] = None,
+    progress_tracker: Optional[ProgressTracker] = None,
+    completed: Optional[List[bool]] = None,
+    start_index: int = 0,
 ) -> None:
     """Launch the PyQt6 interface for multiple images."""
 
     app = QApplication.instance() or QApplication([])
-    window = AnnotationWindow(images, predictions, labels, label_files, class_names)
+    window = AnnotationWindow(
+        images,
+        predictions,
+        labels,
+        label_files,
+        class_names,
+        image_ids=image_ids,
+        progress_tracker=progress_tracker,
+        completed=completed,
+        start_index=start_index,
+    )
     window.show()
     app.exec()
 
