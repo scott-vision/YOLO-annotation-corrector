@@ -3,7 +3,7 @@ import glob
 import logging
 import os
 import shutil
-from typing import List
+from typing import List, Optional
 
 from PIL import Image
 from tqdm import tqdm
@@ -11,6 +11,12 @@ from tqdm import tqdm
 from inference import load_model, predict
 from preprocessing import preprocess
 from window import run_interface
+from setup_dialog import prompt_for_configuration
+
+try:  # Optional dependency until UI is requested
+    from PyQt6.QtWidgets import QApplication
+except ImportError:  # pragma: no cover - PyQt should be available for the UI
+    QApplication = None  # type: ignore[assignment]
 
 
 
@@ -52,18 +58,57 @@ def load_labels(label_file: str) -> List[str]:
         return []
 
 
+def gather_configuration_from_ui(
+    args: argparse.Namespace,
+) -> Optional[argparse.Namespace]:
+    """Open the setup dialog to collect configuration values."""
+
+    if QApplication is None:
+        logging.error(
+            "PyQt6 is required to display the configuration window but is not installed."
+        )
+        return None
+
+    _app = QApplication.instance() or QApplication([])
+    config = prompt_for_configuration(
+        {
+            "images": args.images or "",
+            "labels": args.labels or "",
+            "corrected": args.corrected or "",
+            "model": args.model or "",
+            "predictions": args.predictions,
+        }
+    )
+    if not config:
+        return None
+
+    args.images = config["images"]
+    args.labels = config["labels"]
+    args.corrected = config["corrected"]
+    args.model = config["model"]
+    args.predictions = bool(config.get("predictions"))
+    return args
+
+
 def main():
     parser = argparse.ArgumentParser(description="YOLO Annotation Corrector")
-    parser.add_argument("--images", required=True, help="Path to images directory")
-    parser.add_argument("--labels", required=True, help="Path to original labels directory")
-    parser.add_argument("--corrected", required=True, help="Directory to write corrected labels")
-    parser.add_argument("--model", required=True, help="Path to YOLO model weights")
+    parser.add_argument("--images", help="Path to images directory")
+    parser.add_argument("--labels", help="Path to original labels directory")
+    parser.add_argument("--corrected", help="Directory to write corrected labels")
+    parser.add_argument("--model", help="Path to YOLO model weights")
     parser.add_argument(
         "--predictions",
         action="store_true",
         help="Use cached predictions from a 'predicted_labels' folder",
     )
     args = parser.parse_args()
+
+    if not all([args.images, args.labels, args.corrected, args.model]):
+        gathered = gather_configuration_from_ui(args)
+        if not gathered:
+            logging.info("No configuration selected; exiting.")
+            return
+        args = gathered
 
     os.makedirs(args.corrected, exist_ok=True)
     for src in glob.glob(os.path.join(args.labels, '*.txt')):
