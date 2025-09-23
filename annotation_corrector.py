@@ -98,6 +98,8 @@ def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> a
 
     if not args.predictions and "predictions" in config:
         args.predictions = bool(config.get("predictions"))
+    if not getattr(args, "sahi", False) and "sahi" in config:
+        args.sahi = bool(config.get("sahi"))
 
     return args
 
@@ -122,6 +124,7 @@ def gather_configuration_from_ui(
             "model": args.model or "",
             "sam": args.sam or "",
             "predictions": args.predictions,
+            "sahi": bool(getattr(args, "sahi", False)),
         }
     )
     if not config:
@@ -133,6 +136,7 @@ def gather_configuration_from_ui(
     args.model = config["model"]
     args.predictions = bool(config.get("predictions"))
     args.sam = config.get("sam") or None
+    args.sahi = bool(config.get("sahi"))
     return args
 
 
@@ -146,6 +150,11 @@ def main():
         "--predictions",
         action="store_true",
         help="Use cached predictions from a 'predicted_labels' folder",
+    )
+    parser.add_argument(
+        "--sahi",
+        action="store_true",
+        help="Use SAHI sliding window inference instead of direct Ultralytics predictions",
     )
     parser.add_argument(
         "--sam",
@@ -176,6 +185,7 @@ def main():
             "model": args.model,
             "sam": args.sam or "",
             "predictions": args.predictions,
+            "sahi": args.sahi,
         }
         try:
             with open(config_path, "w", encoding="utf-8") as fh:
@@ -200,8 +210,22 @@ def main():
             "Inference dependencies are not available; install optional requirements to run predictions."
         ) from _INFERENCE_IMPORT_ERROR
 
-    model = load_model(args.model)
-    class_names: List[str] = getattr(getattr(model, "model", None), "names", [])
+    model = load_model(args.model, use_sahi=args.sahi)
+    class_names: List[str] = []
+    if model is not None:
+        names_source = getattr(model, "model", None)
+        potential_names = None
+        if names_source is not None:
+            potential_names = getattr(names_source, "names", None)
+        if not potential_names:
+            potential_names = getattr(model, "names", None)
+
+        if isinstance(potential_names, dict):
+            class_names = [str(name) for name in potential_names.values()]
+        elif isinstance(potential_names, (list, tuple)):
+            class_names = [str(name) for name in potential_names]
+        elif potential_names:
+            class_names = [str(potential_names)]
     sam_helper = None
     if args.sam:
         if not os.path.isfile(args.sam):
@@ -256,7 +280,7 @@ def main():
                 raise ImportError(
                     "Prediction function unavailable; install optional dependencies or use cached predictions."
                 ) from _INFERENCE_IMPORT_ERROR
-            pred_lines = predict(model, processed)
+            pred_lines = predict(model, processed, use_sahi=args.sahi)
             with open(pred_file, "w") as f:
                 for line, conf in pred_lines:
                     f.write(f"{line} {conf:.6f}\n")

@@ -58,6 +58,9 @@ class AnnotationSetupDialog(QDialog):
         )
         self.predictions_checkbox.setChecked(bool(initial.get("predictions")))
 
+        self.sahi_checkbox = QCheckBox("Use SAHI slicing for inference")
+        self.sahi_checkbox.setChecked(bool(initial.get("sahi")))
+
         self.load_button = QPushButton("Load config…")
         self.load_button.clicked.connect(self._load_config)
 
@@ -86,9 +89,10 @@ class AnnotationSetupDialog(QDialog):
         layout.addWidget(self.sam_button, 4, 2)
 
         layout.addWidget(self.predictions_checkbox, 5, 0, 1, 3)
+        layout.addWidget(self.sahi_checkbox, 6, 0, 1, 3)
 
-        layout.addWidget(self.load_button, 6, 1)
-        layout.addWidget(self.save_button, 6, 2)
+        layout.addWidget(self.load_button, 7, 1)
+        layout.addWidget(self.save_button, 7, 2)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel
@@ -96,7 +100,7 @@ class AnnotationSetupDialog(QDialog):
         )
         self.button_box.accepted.connect(self._accept)
         self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box, 7, 0, 1, 3)
+        layout.addWidget(self.button_box, 8, 0, 1, 3)
 
         for edit in (
             self.images_edit,
@@ -208,6 +212,7 @@ class AnnotationSetupDialog(QDialog):
                 "model": model,
                 "sam": sam,
                 "predictions": self.predictions_checkbox.isChecked(),
+                "sahi": self.sahi_checkbox.isChecked(),
             }
 
         if not os.path.isdir(images):
@@ -249,6 +254,7 @@ class AnnotationSetupDialog(QDialog):
             "model": model,
             "sam": sam,
             "predictions": self.predictions_checkbox.isChecked(),
+            "sahi": self.sahi_checkbox.isChecked(),
         }
 
     def _load_config(self) -> None:
@@ -315,6 +321,8 @@ class AnnotationSetupDialog(QDialog):
             self.sam_edit.setText(str(data.get("sam", "")))
         if "predictions" in data:
             self.predictions_checkbox.setChecked(bool(data.get("predictions")))
+        if "sahi" in data:
+            self.sahi_checkbox.setChecked(bool(data.get("sahi")))
         self._update_accept_enabled()
 
     # ------------------------------------------------------------------
@@ -332,6 +340,7 @@ class AnnotationSetupDialog(QDialog):
             "model": str(data["model"]),
             "sam": str(data["sam"]),
             "predictions": bool(data["predictions"]),
+            "sahi": bool(data["sahi"]),
         }
         self.accept()
 
