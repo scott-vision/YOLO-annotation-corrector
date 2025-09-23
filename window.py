@@ -383,12 +383,18 @@ class AnnotationWindow(QMainWindow):
             rect = yolo_line_to_rect(line, item.img_w, item.img_h)
             item.setRect(rect)
             item._update_from_rect()
+            item.line = line
+            if isinstance(item.state, dict):
+                item.state["line"] = line
         for state, line in zip(self.gt_states[self.index], snapshot.get("gt", [])):
             state["line"] = line
         for item, line in zip(self.gt_items, snapshot.get("gt", [])):
             rect = yolo_line_to_rect(line, item.img_w, item.img_h)
             item.setRect(rect)
             item._update_from_rect()
+            item.line = line
+            if isinstance(item.state, dict):
+                item.state["line"] = line
 
     def _rect_from_bbox(
         self, bbox: Tuple[float, float, float, float], img_w: float, img_h: float

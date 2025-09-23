@@ -6,6 +6,8 @@ sys.path.append(os.getcwd())
 
 from PIL import Image
 
+import argparse
+
 import annotation_corrector
 
 
@@ -61,6 +63,33 @@ def test_class_names_loaded_with_predictions(tmp_path, monkeypatch):
     annotation_corrector.main()
 
     assert captured["class_names"] == ["cls"]
+
+
+def test_configuration_file_applied(tmp_path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    config_path = images_dir / annotation_corrector.CONFIG_FILENAME
+    config_path.write_text(
+        '{"labels": "L", "corrected": "C", "model": "M", "predictions": true}'
+    )
+
+    args = argparse.Namespace(
+        images=str(images_dir),
+        labels="",
+        corrected="",
+        model="",
+        sam=None,
+        predictions=False,
+    )
+
+    loaded = annotation_corrector._load_config_file(str(config_path))
+    assert loaded is not None
+    updated = annotation_corrector._apply_config_to_args(args, loaded)
+
+    assert updated.labels == "L"
+    assert updated.corrected == "C"
+    assert updated.model == "M"
+    assert updated.predictions is True
 
 
 def test_progress_resume_start_index(tmp_path, monkeypatch):
