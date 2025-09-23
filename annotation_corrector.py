@@ -1,9 +1,10 @@
 import argparse
 import glob
+import json
 import logging
 import os
 import shutil
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from PIL import Image
 from tqdm import tqdm
@@ -20,7 +21,7 @@ else:
 from preprocessing import preprocess
 from progress import ProgressTracker
 from sam_integration import SamTightener
-from setup_dialog import prompt_for_configuration
+from setup_dialog import prompt_for_configuration, CONFIG_FILENAME
 from window import run_interface
 
 try:  # Optional dependency until UI is requested
@@ -66,6 +67,39 @@ def load_labels(label_file: str) -> List[str]:
     except (OSError, UnicodeDecodeError) as e:
         logging.error("Failed to read label file %s: %s", label_file, e)
         return []
+
+
+def _load_config_file(config_path: str) -> Optional[Dict[str, Any]]:
+    """Load a JSON configuration file if it exists."""
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        logging.warning("Failed to load configuration %s: %s", config_path, exc)
+        return None
+
+    if not isinstance(data, dict):
+        logging.warning("Configuration file %s must contain a JSON object", config_path)
+        return None
+
+    return data
+
+
+def _apply_config_to_args(args: argparse.Namespace, config: Dict[str, Any]) -> argparse.Namespace:
+    """Populate missing command line arguments from a configuration dictionary."""
+
+    for key in ("images", "labels", "corrected", "model", "sam"):
+        value = config.get(key)
+        if value and not getattr(args, key, None):
+            setattr(args, key, value)
+
+    if not args.predictions and "predictions" in config:
+        args.predictions = bool(config.get("predictions"))
+
+    return args
 
 
 def gather_configuration_from_ui(
@@ -119,12 +153,35 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.images:
+        config_path = os.path.join(args.images, CONFIG_FILENAME)
+        loaded_config = _load_config_file(config_path)
+        if loaded_config:
+            args = _apply_config_to_args(args, loaded_config)
+
     if not all([args.images, args.labels, args.corrected, args.model]):
         gathered = gather_configuration_from_ui(args)
         if not gathered:
             logging.info("No configuration selected; exiting.")
             return
         args = gathered
+
+    # Persist the final configuration alongside the images if desired
+    if args.images:
+        config_path = os.path.join(args.images, CONFIG_FILENAME)
+        data = {
+            "images": args.images,
+            "labels": args.labels,
+            "corrected": args.corrected,
+            "model": args.model,
+            "sam": args.sam or "",
+            "predictions": args.predictions,
+        }
+        try:
+            with open(config_path, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, indent=2)
+        except OSError as exc:
+            logging.warning("Unable to update configuration file %s: %s", config_path, exc)
 
     os.makedirs(args.corrected, exist_ok=True)
     for src in glob.glob(os.path.join(args.labels, '*.txt')):
