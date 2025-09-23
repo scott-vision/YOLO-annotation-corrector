@@ -8,8 +8,17 @@ from typing import List, Optional
 from PIL import Image
 from tqdm import tqdm
 
-from inference import load_model, predict
+try:  # Optional dependency until inference is requested
+    from inference import load_model, predict
+except ImportError as exc:  # pragma: no cover - handled at runtime if missing
+    load_model = None  # type: ignore[assignment]
+    predict = None  # type: ignore[assignment]
+    _INFERENCE_IMPORT_ERROR = exc
+else:
+    _INFERENCE_IMPORT_ERROR = None
+
 from preprocessing import preprocess
+from progress import ProgressTracker
 from window import run_interface
 from setup_dialog import prompt_for_configuration
 
@@ -122,6 +131,11 @@ def main():
     pred_dir = os.path.join(args.corrected, "predicted_labels")
     os.makedirs(pred_dir, exist_ok=True)
 
+    if load_model is None:
+        raise ImportError(
+            "Inference dependencies are not available; install optional requirements to run predictions."
+        ) from _INFERENCE_IMPORT_ERROR
+
     model = load_model(args.model)
     class_names: List[str] = getattr(getattr(model, "model", None), "names", [])
     if args.predictions:
@@ -138,6 +152,10 @@ def main():
     predictions = []
     labels = []
     label_files = []
+    image_ids = []
+
+    progress_file = os.path.join(args.corrected, "annotation_progress.json")
+    progress_tracker = ProgressTracker(progress_file)
 
 
     for img_path in tqdm(image_paths, desc="Processing images"):
@@ -165,6 +183,10 @@ def main():
                         conf = float(parts[5]) if len(parts) >= 6 else 0.0
                         pred_lines.append((" ".join(parts[:5]), conf))
         else:
+            if predict is None:
+                raise ImportError(
+                    "Prediction function unavailable; install optional dependencies or use cached predictions."
+                ) from _INFERENCE_IMPORT_ERROR
             pred_lines = predict(model, processed)
             with open(pred_file, "w") as f:
                 for line, conf in pred_lines:
@@ -177,9 +199,30 @@ def main():
         predictions.append([{"line": line, "conf": conf, "accepted": False} for line, conf in pred_lines])
         labels.append([{"line": line, "kept": True} for line in label_lines])
         label_files.append(label_file)
+        image_ids.append(base)
 
     if images:
-        run_interface(images, predictions, labels, label_files, class_names)
+        progress_tracker.prune(image_ids)
+        completed_flags = [progress_tracker.is_completed(img_id) for img_id in image_ids]
+        start_index = 0
+        for idx, done in enumerate(completed_flags):
+            if not done:
+                start_index = idx
+                break
+        else:
+            start_index = len(completed_flags) - 1 if completed_flags else 0
+
+        run_interface(
+            images,
+            predictions,
+            labels,
+            label_files,
+            class_names,
+            image_ids=image_ids,
+            progress_tracker=progress_tracker,
+            completed=completed_flags,
+            start_index=start_index,
+        )
 
 
 if __name__ == "__main__":
