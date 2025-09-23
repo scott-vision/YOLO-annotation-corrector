@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import List, Optional, TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QColor, QPen
-from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsTextItem
+from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsTextItem, QMenu
 
 if TYPE_CHECKING:  # pragma: no cover - used only for type hints
     from window import AnnotationWindow
@@ -59,6 +59,23 @@ class ToggleIcon(QGraphicsTextItem):
         super().mousePressEvent(event)
 
 
+class ClickableTextItem(QGraphicsTextItem):
+    """Label that invokes a callback when clicked."""
+
+    def __init__(self, callback, parent=None) -> None:
+        super().__init__(parent)
+        self._callback = callback
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event):  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._callback(event)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class PredBox(QGraphicsRectItem):
     """Graphics item for a predicted box."""
 
@@ -83,13 +100,10 @@ class PredBox(QGraphicsRectItem):
         self.img_w = img_w
         self.img_h = img_h
         self._resizing: Optional[str] = None
+        self.class_names = class_names
 
-        cls_id = int(self.line.split()[0])
-        cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
         self.label = QGraphicsTextItem(self)
-        self.label.setHtml(
-            f"<div style='background-color:white;'>{cls_name}:{self.conf:.2f}</div>"
-        )
+        self._update_label()
 
         # A clickable + / - icon allowing users to toggle acceptance even when
         # the icon sits outside of the rectangle's bounds.
@@ -110,16 +124,32 @@ class PredBox(QGraphicsRectItem):
         self._position_items()
 
     def _position_items(self) -> None:
-        """Position label beneath the box and icon beneath the label."""
+        """Position the label and icon together beneath the box."""
 
         rect = self.rect()
-        label_x = rect.left()
-        label_y = rect.bottom() + 2
+        margin = 2
+        label_x = rect.left() + margin
+        label_y = rect.bottom() + margin
         self.label.setPos(label_x, label_y)
 
-        label_height = self.label.boundingRect().height()
-        icon_y = label_y + label_height + 2
-        self.icon.setPos(label_x, icon_y)
+        label_width = self.label.boundingRect().width()
+        icon_x = label_x + label_width + margin
+        self.icon.setPos(icon_x, label_y)
+
+    def _class_name(self) -> str:
+        try:
+            cls_id = int(self.line.split()[0])
+        except (ValueError, IndexError):
+            return "?"
+        if 0 <= cls_id < len(self.class_names):
+            return self.class_names[cls_id]
+        return str(cls_id)
+
+    def _update_label(self) -> None:
+        cls_name = self._class_name()
+        self.label.setHtml(
+            f"<div style='background-color:white;'>{cls_name}:{self.conf:.2f}</div>"
+        )
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -151,8 +181,26 @@ class PredBox(QGraphicsRectItem):
         cls_id = int(self.line.split()[0])
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
+        self._update_label()
         self._position_items()
         if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
+    def set_class(self, cls_id: int) -> None:
+        """Update the class identifier for the prediction."""
+
+        parts = self.line.split()
+        if len(parts) != 5:
+            return
+        parts[0] = str(cls_id)
+        self.line = " ".join(parts)
+        self.state["line"] = self.line
+        self._update_label()
+        self._position_items()
+        if self.window.final_checkbox.isChecked() and not getattr(
+            self.window, "_suspend_final_refresh", False
+        ):
             self.window.update_final_items()
         self.window.flag_predictions()
 
@@ -218,11 +266,10 @@ class GTBox(QGraphicsRectItem):
         self.img_w = img_w
         self.img_h = img_h
         self._resizing: Optional[str] = None
+        self.class_names = class_names
 
-        cls_id = int(self.line.split()[0])
-        cls_name = class_names[cls_id] if 0 <= cls_id < len(class_names) else str(cls_id)
         self.label = QGraphicsTextItem(self)
-        self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
+        self._update_label()
 
         # Clickable indicator mirroring the behaviour of PredBox
         self.icon = ToggleIcon(self, self._toggle)
@@ -255,6 +302,19 @@ class GTBox(QGraphicsRectItem):
         icon_x = label_x + label_width + margin
         self.icon.setPos(icon_x, label_y)
 
+    def _class_name(self) -> str:
+        try:
+            cls_id = int(self.line.split()[0])
+        except (ValueError, IndexError):
+            return "?"
+        if 0 <= cls_id < len(self.class_names):
+            return self.class_names[cls_id]
+        return str(cls_id)
+
+    def _update_label(self) -> None:
+        cls_name = self._class_name()
+        self.label.setHtml(f"<div style='background-color:white;'>{cls_name}</div>")
+
     # ------------------------------------------------------------------
     # Resizing helpers
     # ------------------------------------------------------------------
@@ -285,8 +345,26 @@ class GTBox(QGraphicsRectItem):
         cls_id = int(self.line.split()[0])
         self.line = rect_to_yolo_line(self.rect(), cls_id, self.img_w, self.img_h)
         self.state["line"] = self.line
+        self._update_label()
         self._position_items()
         if self.window.final_checkbox.isChecked():
+            self.window.update_final_items()
+        self.window.flag_predictions()
+
+    def set_class(self, cls_id: int) -> None:
+        """Update the class identifier for this ground-truth annotation."""
+
+        parts = self.line.split()
+        if len(parts) != 5:
+            return
+        parts[0] = str(cls_id)
+        self.line = " ".join(parts)
+        self.state["line"] = self.line
+        self._update_label()
+        self._position_items()
+        if self.window.final_checkbox.isChecked() and not getattr(
+            self.window, "_suspend_final_refresh", False
+        ):
             self.window.update_final_items()
         self.window.flag_predictions()
 
@@ -344,22 +422,29 @@ class FinalBoxOverlay(QGraphicsRectItem):
         self.window = window
         self.class_names = class_names
         self._resizing: Optional[str] = None
+        self._dragging = False
+        self._drag_offset = QPointF()
 
         self.setPen(QPen(QColor("blue"), 2))
         self.setZValue(source.zValue() + 1)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
 
-        self.label = QGraphicsTextItem(self)
+        self.label = ClickableTextItem(self._show_class_menu, self)
         self._update_label()
 
     def _class_name(self) -> str:
-        try:
-            cls_id = int(self.source.line.split()[0])
-        except (ValueError, IndexError):
+        cls_id = self._class_id()
+        if cls_id is None:
             return "?"
         if 0 <= cls_id < len(self.class_names):
             return self.class_names[cls_id]
         return str(cls_id)
+
+    def _class_id(self) -> Optional[int]:
+        try:
+            return int(self.source.line.split()[0])
+        except (ValueError, IndexError):
+            return None
 
     def _update_label(self) -> None:
         self.label.setHtml(
@@ -369,6 +454,33 @@ class FinalBoxOverlay(QGraphicsRectItem):
         margin = 2
         label_height = self.label.boundingRect().height()
         self.label.setPos(rect.left(), rect.top() - label_height - margin)
+
+    def _show_class_menu(self, event) -> None:
+        menu = QMenu()
+        current_cls = self._class_id()
+        for idx, name in enumerate(self.class_names):
+            action = menu.addAction(name)
+            action.setData(idx)
+            action.setCheckable(True)
+            action.setChecked(idx == current_cls)
+        selected = menu.exec(event.screenPos().toPoint())
+        if selected is None:
+            return
+        data = selected.data()
+        if data is None:
+            return
+        self._set_class(int(data))
+
+    def _set_class(self, cls_id: int) -> None:
+        if self._class_id() == cls_id:
+            return
+        self.window._suspend_final_refresh = True
+        try:
+            self.source.set_class(cls_id)
+        finally:
+            self.window._suspend_final_refresh = False
+        self._update_label()
+        self.window.update_final_items()
 
     # ------------------------------------------------------------------
     # Resizing helpers
@@ -416,6 +528,11 @@ class FinalBoxOverlay(QGraphicsRectItem):
             event.ignore()
             return
         if not self._start_resize(event):
+            if self.rect().contains(event.pos()):
+                self._dragging = True
+                self._drag_offset = event.pos() - self.rect().topLeft()
+                event.accept()
+                return
             event.ignore()
             return
         super().mousePressEvent(event)
@@ -423,6 +540,12 @@ class FinalBoxOverlay(QGraphicsRectItem):
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self._resizing:
             self._resize(event)
+        elif self._dragging:
+            rect = self.rect()
+            rect.moveTopLeft(event.pos() - self._drag_offset)
+            self.setRect(rect)
+            self._apply_to_source()
+            self._update_label()
         else:
             super().mouseMoveEvent(event)
 
@@ -430,6 +553,9 @@ class FinalBoxOverlay(QGraphicsRectItem):
         if self._resizing:
             self._resize(event)
             self._resizing = None
+            self.window.update_final_items()
+        elif self._dragging:
+            self._dragging = False
             self.window.update_final_items()
         super().mouseReleaseEvent(event)
 

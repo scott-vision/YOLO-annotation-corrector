@@ -17,6 +17,7 @@ class DummyWindow:
 
     def __init__(self):
         self.final_checkbox = QCheckBox()
+        self._suspend_final_refresh = False
 
     def update_final_items(self):
         pass
@@ -98,4 +99,38 @@ def test_clicking_gtbox_icon_toggles_kept():
     assert box.kept is True
     _click_icon(box, view)
     assert box.kept is False
+
+
+def test_predbox_set_class_updates_state_and_label():
+    app = QApplication.instance() or QApplication([])
+    scene = QGraphicsScene()
+    view = ZoomableGraphicsView(scene)
+    win = DummyWindow()
+    rect = QRectF(0, 0, 20, 20)
+    state = {"line": "0 0.1 0.1 0.2 0.2", "conf": 0.9, "accepted": True}
+    class_names = ["obj", "alt"]
+    box = PredBox(rect, state, class_names, win, 100, 100)
+    scene.addItem(box)
+    view.show()
+    QTest.qWait(10)
+    box.set_class(1)
+    assert state["line"].startswith("1 ")
+    assert "alt" in box.label.toHtml()
+
+
+def test_gtbox_set_class_updates_state_and_label():
+    app = QApplication.instance() or QApplication([])
+    scene = QGraphicsScene()
+    view = ZoomableGraphicsView(scene)
+    win = DummyWindow()
+    rect = QRectF(0, 0, 20, 20)
+    state = {"line": "0 0.1 0.1 0.2 0.2", "kept": True}
+    class_names = ["obj", "alt"]
+    box = GTBox(rect, state, class_names, win, 100, 100)
+    scene.addItem(box)
+    view.show()
+    QTest.qWait(10)
+    box.set_class(1)
+    assert state["line"].startswith("1 ")
+    assert "alt" in box.label.toHtml()
 
