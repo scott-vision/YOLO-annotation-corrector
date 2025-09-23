@@ -35,6 +35,14 @@ def rect_to_yolo_line(rect: QRectF, cls_id: int, img_w: int, img_h: int) -> str:
     return f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}"
 
 
+ICON_TEMPLATE = (
+    "<div style=\"display:inline-block;color:{color};cursor:pointer;"
+    "background-color:white;border:1px solid {color};"
+    "font-weight:bold;width:18px;height:18px;line-height:18px;"
+    "text-align:center;border-radius:3px;\">{symbol}</div>"
+)
+
+
 class ToggleIcon(QGraphicsTextItem):
     """Clickable icon that delegates the mouse press to a callback."""
 
@@ -98,9 +106,7 @@ class PredBox(QGraphicsRectItem):
         else:
             symbol = "+"
             color = "green"
-        self.icon.setHtml(
-            f"<div style='color:{color};background-color:white;'>{symbol}</div>"
-        )
+        self.icon.setHtml(ICON_TEMPLATE.format(symbol=symbol, color=color))
         self._position_items()
 
     def _position_items(self) -> None:
@@ -232,9 +238,7 @@ class GTBox(QGraphicsRectItem):
         else:
             symbol = "+"
             color = "green"
-        self.icon.setHtml(
-            f"<div style='color:{color};background-color:white;'>{symbol}</div>"
-        )
+        self.icon.setHtml(ICON_TEMPLATE.format(symbol=symbol, color=color))
         self._position_items()
 
     def _position_items(self) -> None:
@@ -243,7 +247,8 @@ class GTBox(QGraphicsRectItem):
         rect = self.rect()
         margin = 2
         label_x = rect.left() + margin
-        label_y = rect.top() + margin
+        label_height = self.label.boundingRect().height()
+        label_y = rect.top() - label_height - margin
         self.label.setPos(label_x, label_y)
 
         label_width = self.label.boundingRect().width()
