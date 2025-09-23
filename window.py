@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QGraphicsItem,
     QGraphicsPixmapItem,
-    QGraphicsRectItem,
     QGraphicsScene,
-    QGraphicsTextItem,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from graphics_items import GTBox, PredBox
+from graphics_items import FinalBoxOverlay, GTBox, PredBox
 from progress import ProgressTracker
 from view_utils import ZoomableGraphicsView
 
@@ -117,6 +117,7 @@ class AnnotationWindow(QMainWindow):
         self.pred_items: List[PredBox] = []
         self.gt_items: List[GTBox] = []
         self.final_items: List[QGraphicsItem] = []
+        self._suspend_final_refresh = False
 
         # Checkboxes controlling visibility of annotation layers
         self.pred_checkbox = QCheckBox("Show predictions")
@@ -173,6 +174,10 @@ class AnnotationWindow(QMainWindow):
         self.next_todo_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.next_todo_btn.clicked.connect(self.next_unreviewed_image)
 
+        self.prev_todo_btn = QPushButton("Previous TODO")
+        self.prev_todo_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.prev_todo_btn.clicked.connect(self.prev_unreviewed_image)
+
         self.next_btn = QPushButton("Next")
         self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.next_btn.clicked.connect(self.next_image)  # signal/slot
@@ -194,23 +199,39 @@ class AnnotationWindow(QMainWindow):
         self.contrast_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.contrast_slider.valueChanged.connect(self.update_image_display)
 
-        control_layout = QHBoxLayout()
-        control_layout.addWidget(self.pred_checkbox)
-        control_layout.addWidget(self.gt_checkbox)
-        control_layout.addWidget(self.final_checkbox)
-        control_layout.addWidget(self.complete_checkbox)
-        control_layout.addWidget(self.progress_label)
-        control_layout.addWidget(self.preview_btn)
-        control_layout.addWidget(self.save_btn)
-        control_layout.addWidget(self.sam_tighten_btn)
-        control_layout.addWidget(self.sam_revert_btn)
-        control_layout.addWidget(self.single_sam_btn)
-        control_layout.addWidget(self.prev_btn)
-        control_layout.addWidget(self.next_todo_btn)
-        control_layout.addWidget(self.next_btn)
-        control_layout.addWidget(self.exit_btn)
-        controls = QWidget()
-        controls.setLayout(control_layout)
+        checkbox_layout = QHBoxLayout()
+        checkbox_layout.addWidget(self.pred_checkbox)
+        checkbox_layout.addWidget(self.gt_checkbox)
+        checkbox_layout.addWidget(self.final_checkbox)
+        checkbox_layout.addWidget(self.complete_checkbox)
+        checkbox_layout.addStretch()
+        checkbox_layout.addWidget(self.progress_label)
+
+        controls_layout = QVBoxLayout()
+
+        action_row = QHBoxLayout()
+        action_row.addWidget(self.preview_btn)
+        action_row.addWidget(self.save_btn)
+        action_row.addWidget(self.exit_btn)
+        action_row.addStretch()
+        controls_layout.addLayout(action_row)
+
+        sam_row = QHBoxLayout()
+        sam_row.addWidget(self.sam_tighten_btn)
+        sam_row.addWidget(self.sam_revert_btn)
+        sam_row.addWidget(self.single_sam_btn)
+        sam_row.addStretch()
+        controls_layout.addLayout(sam_row)
+
+        navigation_layout = QGridLayout()
+        navigation_layout.addWidget(self.prev_btn, 0, 0)
+        navigation_layout.addWidget(self.prev_todo_btn, 0, 1)
+        navigation_layout.addWidget(self.next_todo_btn, 0, 2)
+        navigation_layout.addWidget(self.next_btn, 0, 3)
+        controls_layout.addLayout(navigation_layout)
+
+        controls_group = QGroupBox("Controls")
+        controls_group.setLayout(controls_layout)
 
         slider_layout = QHBoxLayout()
         slider_layout.addWidget(QLabel("Brightness"))
@@ -220,8 +241,9 @@ class AnnotationWindow(QMainWindow):
 
         layout = QVBoxLayout()
         layout.addWidget(self.view)
+        layout.addLayout(checkbox_layout)
         layout.addLayout(slider_layout)
-        layout.addWidget(controls)
+        layout.addWidget(controls_group)
 
         container = QWidget()
         container.setLayout(layout)
@@ -393,6 +415,19 @@ class AnnotationWindow(QMainWindow):
                 return idx
         return None
 
+    def _find_previous_unreviewed(self, start_index: int) -> Optional[int]:
+        """Return the previous index awaiting review or ``None`` if all done."""
+
+        total = len(self.completed_states)
+        if total == 0:
+            return None
+        start_index %= total
+        for offset in range(total):
+            idx = (start_index - offset) % total
+            if not self.completed_states[idx]:
+                return idx
+        return None
+
     def next_unreviewed_image(self) -> None:
         """Jump to the next image that has not been marked as reviewed."""
 
@@ -403,6 +438,17 @@ class AnnotationWindow(QMainWindow):
         next_index = self._find_next_unreviewed(start)
         if next_index is not None and next_index != self.index:
             self.load_image(next_index)
+
+    def prev_unreviewed_image(self) -> None:
+        """Jump to the previous image that has not been marked as reviewed."""
+
+        total = len(self.completed_states)
+        if total == 0:
+            return
+        start = (self.index - 1) % total
+        prev_index = self._find_previous_unreviewed(start)
+        if prev_index is not None and prev_index != self.index:
+            self.load_image(prev_index)
 
     def flag_predictions(self) -> None:
         """Highlight predictions that do not match any ground truth box."""
@@ -700,6 +746,8 @@ class AnnotationWindow(QMainWindow):
     def update_final_items(self) -> None:
         """Draw overlays for the final set of annotations."""
 
+        if self._suspend_final_refresh:
+            return
         for item in self.final_items:
             self.scene.removeItem(item)
         self.final_items = []
@@ -707,42 +755,14 @@ class AnnotationWindow(QMainWindow):
             return
         for item in self.gt_items:
             if item.kept:
-                rect = QGraphicsRectItem(item.rect())
-                rect.setPen(QPen(QColor("blue"), 2))
-                self.scene.addItem(rect)
-                self.final_items.append(rect)
-                cls_id = int(item.line.split()[0])
-                cls_name = (
-                    self.class_names[cls_id]
-                    if 0 <= cls_id < len(self.class_names)
-                    else str(cls_id)
-                )
-                label = QGraphicsTextItem()
-                label.setHtml(
-                    f"<div style='color:blue;background-color:white;'>{cls_name}</div>"
-                )
-                label.setPos(item.rect().left(), item.rect().top() - 20)
-                self.scene.addItem(label)
-                self.final_items.append(label)
+                overlay = FinalBoxOverlay(item, self.class_names, self)
+                self.scene.addItem(overlay)
+                self.final_items.append(overlay)
         for item in self.pred_items:
             if item.accepted:
-                rect = QGraphicsRectItem(item.rect())
-                rect.setPen(QPen(QColor("blue"), 2))
-                self.scene.addItem(rect)
-                self.final_items.append(rect)
-                cls_id = int(item.line.split()[0])
-                cls_name = (
-                    self.class_names[cls_id]
-                    if 0 <= cls_id < len(self.class_names)
-                    else str(cls_id)
-                )
-                label = QGraphicsTextItem()
-                label.setHtml(
-                    f"<div style='color:blue;background-color:white;'>{cls_name}</div>"
-                )
-                label.setPos(item.rect().left(), item.rect().top() - 20)
-                self.scene.addItem(label)
-                self.final_items.append(label)
+                overlay = FinalBoxOverlay(item, self.class_names, self)
+                self.scene.addItem(overlay)
+                self.final_items.append(overlay)
 
     def preview(self) -> None:
         """Display a message box with the final labels for the current image."""

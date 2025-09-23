@@ -327,3 +327,109 @@ class GTBox(QGraphicsRectItem):
         self._resizing = None
         super().mouseReleaseEvent(event)
 
+
+class FinalBoxOverlay(QGraphicsRectItem):
+    """Interactive overlay for final labels that proxies changes to a source box."""
+
+    HANDLE_SIZE = 10
+
+    def __init__(
+        self,
+        source: PredBox | GTBox,
+        class_names: List[str],
+        window: "AnnotationWindow",
+    ) -> None:
+        super().__init__(source.rect())
+        self.source = source
+        self.window = window
+        self.class_names = class_names
+        self._resizing: Optional[str] = None
+
+        self.setPen(QPen(QColor("blue"), 2))
+        self.setZValue(source.zValue() + 1)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+
+        self.label = QGraphicsTextItem(self)
+        self._update_label()
+
+    def _class_name(self) -> str:
+        try:
+            cls_id = int(self.source.line.split()[0])
+        except (ValueError, IndexError):
+            return "?"
+        if 0 <= cls_id < len(self.class_names):
+            return self.class_names[cls_id]
+        return str(cls_id)
+
+    def _update_label(self) -> None:
+        self.label.setHtml(
+            f"<div style='color:blue;background-color:white;'>{self._class_name()}</div>"
+        )
+        rect = self.rect()
+        margin = 2
+        label_height = self.label.boundingRect().height()
+        self.label.setPos(rect.left(), rect.top() - label_height - margin)
+
+    # ------------------------------------------------------------------
+    # Resizing helpers
+    # ------------------------------------------------------------------
+    def _start_resize(self, event) -> bool:
+        r = self.rect()
+        pos = event.pos()
+        if abs(pos.x() - r.left()) <= self.HANDLE_SIZE and abs(pos.y() - r.top()) <= self.HANDLE_SIZE:
+            self._resizing = "topleft"
+        elif (
+            abs(pos.x() - r.right()) <= self.HANDLE_SIZE
+            and abs(pos.y() - r.bottom()) <= self.HANDLE_SIZE
+        ):
+            self._resizing = "bottomright"
+        else:
+            self._resizing = None
+        return self._resizing is not None
+
+    def _resize(self, event) -> None:
+        if not self._resizing:
+            return
+        r = self.rect()
+        pos = event.pos()
+        if self._resizing == "topleft":
+            r.setTopLeft(pos)
+        elif self._resizing == "bottomright":
+            r.setBottomRight(pos)
+        self.setRect(r)
+        self._apply_to_source()
+        self._update_label()
+
+    def _apply_to_source(self) -> None:
+        self.window._suspend_final_refresh = True
+        try:
+            self.source.setRect(self.rect())
+            self.source._update_from_rect()
+        finally:
+            self.window._suspend_final_refresh = False
+
+    # ------------------------------------------------------------------
+    # Mouse events
+    # ------------------------------------------------------------------
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() != Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
+        if not self._start_resize(event):
+            event.ignore()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        if self._resizing:
+            self._resize(event)
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if self._resizing:
+            self._resize(event)
+            self._resizing = None
+            self.window.update_final_items()
+        super().mouseReleaseEvent(event)
+
