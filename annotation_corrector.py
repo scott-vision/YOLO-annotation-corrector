@@ -254,14 +254,22 @@ def main():
     for img_path in tqdm(image_paths, desc="Processing images"):
 
         try:
-          image = Image.open(img_path).convert('RGB')
+            image = Image.open(img_path).convert("RGB")
         except (OSError, ValueError) as e:
-          logging.error("Failed to open image %s: %s", img_path, e)
-          continue
+            logging.error("Failed to open image %s: %s", img_path, e)
+            continue
         processed = preprocess(image)
         base = os.path.splitext(os.path.basename(img_path))[0]
-        label_file = os.path.join(args.corrected, base + '.txt')
-        label_lines = load_labels(label_file)
+        corrected_label_file = os.path.join(args.corrected, base + '.txt')
+        original_label_file = os.path.join(args.labels, base + '.txt')
+        completed = progress_tracker.is_completed(base)
+        if completed:
+            label_lines = load_labels(corrected_label_file)
+            if not label_lines:
+                label_lines = load_labels(original_label_file)
+        else:
+            label_lines = load_labels(original_label_file)
+        label_file = corrected_label_file
         pred_file = os.path.join(pred_dir, base + '.txt')
     
         if args.predictions:
@@ -298,12 +306,18 @@ def main():
         progress_tracker.prune(image_ids)
         completed_flags = [progress_tracker.is_completed(img_id) for img_id in image_ids]
         start_index = 0
-        for idx, done in enumerate(completed_flags):
-            if not done:
-                start_index = idx
-                break
+        if progress_tracker.last_image_id:
+            try:
+                start_index = image_ids.index(progress_tracker.last_image_id)
+            except ValueError:
+                start_index = 0
         else:
-            start_index = len(completed_flags) - 1 if completed_flags else 0
+            for idx, done in enumerate(completed_flags):
+                if not done:
+                    start_index = idx
+                    break
+            else:
+                start_index = len(completed_flags) - 1 if completed_flags else 0
 
         run_interface(
             images,
